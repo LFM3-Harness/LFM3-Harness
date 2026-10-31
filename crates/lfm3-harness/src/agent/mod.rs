@@ -6,9 +6,11 @@
 //! same state machine.
 
 pub mod executor;
+pub mod grounding;
 pub mod loop_agent;
 pub mod packets;
 pub mod planner;
+pub mod profile;
 pub mod recovery;
 pub mod runner;
 
@@ -30,11 +32,12 @@ use crate::{
 
 pub use executor::{Executor, StepAction};
 pub use loop_agent::{
-    AgentLoop, DeliverableProof, LoopCall, LoopError, LoopOptions, LoopReport, LoopStatus,
-    LoopTurn, TodoItem,
+    AgentLoop, DeliverableProof, LoopCall, LoopError, LoopOptions, LoopPhase, LoopReport,
+    LoopStatus, LoopTurn, TodoCheck, TodoCheckKind, TodoItem,
 };
 pub use packets::{FailurePacket, RemainingBudget};
 pub use planner::{decode_single_json, plan_request, PlanRequest, Planner, PlannerError};
+pub use profile::{ModelProfile, D1, LFM3_AUDIO, LFM3_TEXT, LFM3_VL};
 pub use recovery::{
     Budget, FailureClass, FailureRecord, RecoveryController, RecoveryDecision, RecoveryError,
     StopReason,

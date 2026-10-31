@@ -9,7 +9,7 @@ use std::{
 use clap::{Parser, Subcommand};
 use lfm3_cli::{doctor, events, fixture::DeskFixture, live};
 use lfm3_harness::{
-    agent::{planner::plan_request, recovery::Budget, AgentLoop, LoopOptions, LoopStatus},
+    agent::{planner::plan_request, recovery::Budget, AgentLoop, LoopStatus, LFM3_TEXT},
     mission::{load_missions, InputArtifact},
     ArtifactId, Config, Executor, FrozenAcceptance, MissionManifest, ModelGateway, PlanDraft,
     Planner, RunCoordinator, RunId, RunStatus, Runner, Store, ToolName, ToolRegistry,
@@ -592,13 +592,11 @@ async fn job(config: &Config, args: JobArgs) -> Result<ExitCode, String> {
         registry = registry.with_models(manager.clone());
     }
     let mut sink = TraceSink::new(args.events.as_deref())?;
+    let mut options = LFM3_TEXT.loop_options(args.max_turns.max(1));
+    options.max_calls = args.max_calls.clamp(1, 4);
     let runner = AgentLoop::new(live.gateway(), Arc::new(registry), live.identity.clone())
-        .with_options(LoopOptions {
-            max_turns: args.max_turns.max(1),
-            max_calls: args.max_calls.clamp(1, 4),
-            replay: 8,
-        })
-        .with_max_tokens(2048);
+        .with_options(options)
+        .with_max_tokens(LFM3_TEXT.max_output_tokens);
     let result = {
         let mut on_event = |value: Value| sink.write(&value);
         runner

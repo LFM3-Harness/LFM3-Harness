@@ -318,6 +318,8 @@ impl LlamaClient {
             messages: &request.messages,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
+            top_k: request.top_k,
+            repetition_penalty: request.repetition_penalty,
             stream,
             tools: &request.tools,
             tool_choice: request.tool_choice.as_deref(),
@@ -359,7 +361,13 @@ impl LlamaClient {
             .map_err(|error| ModelError::Protocol(format!("transcription response: {error}")))
     }
 
-    /// Asks d1 for one calibrated label chosen from the supplied set.
+    /// Asks the native decision endpoint for one label chosen from the supplied set.
+    ///
+    /// d1-2B is served as a llama.cpp decision model: it answers
+    /// `/v1/systemone` with a probability distribution over typed choice
+    /// labels and does not generate chat text. Calling the chat route against
+    /// this server returns `501 not_supported_error`, so decisions must use
+    /// the decision protocol directly.
     pub async fn decide(
         &self,
         request: DecisionRequest,
@@ -370,48 +378,76 @@ impl LlamaClient {
                 "a decision needs at least one label".to_owned(),
             ));
         }
-        let labels = request
+        let criteria = request
             .labels
             .iter()
-            .map(|(label, description)| format!("- {label}: {description}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let instruction = format!(
-            "{}\nChoose exactly one label:\n{labels}\n\
-             Reply with a JSON object having string `label`, number `confidence` in [0,1], \
-             and string `rationale`. Do not add other keys.",
-            request.instruction
-        );
-        let chat = ChatRequest::new(vec![
-            crate::model::ChatMessage::system(instruction),
-            crate::model::ChatMessage::user(request.evidence),
-        ])
-        .with_temperature(0.0)
-        .with_max_tokens(request.max_tokens)
-        .with_response_format(crate::model::ResponseFormat::json_object());
-        let response = self.chat(chat, cancel).await?;
-        let content = response
-            .content()
-            .ok_or_else(|| ModelError::Protocol("decision returned no content".to_owned()))?;
-        let wire: DecisionWire = serde_json::from_str(content)
-            .map_err(|error| ModelError::Protocol(format!("decision JSON: {error}")))?;
-        if !request.labels.contains_key(&wire.label) {
+            .map(|(label, description)| {
+                (label.clone(), serde_json::Value::from(description.clone()))
+            })
+            .collect::<serde_json::Map<String, serde_json::Value>>();
+        let wire = serde_json::json!({
+            "model": self.model,
+            "state": request.evidence,
+            "questions": {
+                "route": {
+                    "type": "choice",
+                    "instructions": request.instruction,
+                    "criteria": criteria,
+                }
+            }
+        });
+        let url = self.endpoint_for("v1/systemone");
+        let (status, body) = self.send(cancel, self.http.post(url).json(&wire)).await?;
+        self.ensure_success(status, &body)?;
+        let response: SystemOneResponse = serde_json::from_str(&body)
+            .map_err(|error| ModelError::Protocol(format!("decision response: {error}")))?;
+        let answer = response.answers.get("route").ok_or_else(|| {
+            ModelError::Protocol("decision response has no route answer".to_owned())
+        })?;
+        if let Some(kind) = answer.kind.as_deref() {
+            if kind != "choice" {
+                return Err(ModelError::Protocol(format!(
+                    "decision answer is {kind:?}, not a choice"
+                )));
+            }
+        }
+        let label = answer
+            .choice
+            .clone()
+            .ok_or_else(|| ModelError::Protocol("decision response has no choice".to_owned()))?;
+        if !request.labels.contains_key(&label) {
             return Err(ModelError::Protocol(format!(
-                "decision label {:?} is outside the declared set",
-                wire.label
+                "decision label {label:?} is outside the declared set"
             )));
         }
-        if !(0.0..=1.0).contains(&wire.confidence) || !wire.confidence.is_finite() {
+        let confidence = answer
+            .confidence
+            .or_else(|| {
+                answer.probabilities.as_ref().and_then(|probabilities| {
+                    probabilities
+                        .values()
+                        .copied()
+                        .fold(None, |best: Option<f64>, probability| {
+                            Some(best.map_or(probability, |best| best.max(probability)))
+                        })
+                })
+            })
+            .ok_or_else(|| {
+                ModelError::Protocol("decision response has no confidence".to_owned())
+            })?;
+        if !(0.0..=1.0).contains(&confidence) || !confidence.is_finite() {
             return Err(ModelError::Protocol(format!(
-                "decision confidence {} is outside [0,1]",
-                wire.confidence
+                "decision confidence {confidence} is outside [0,1]"
             )));
         }
         Ok(Decision {
-            label: wire.label,
-            confidence: wire.confidence,
-            rationale: wire.rationale.unwrap_or_default(),
-            model: response.model,
+            rationale: answer.rationale(&label, confidence),
+            label,
+            confidence,
+            model: response
+                .model
+                .filter(|model| !model.trim().is_empty())
+                .unwrap_or_else(|| self.model.clone()),
         })
     }
 
@@ -535,6 +571,10 @@ struct WireChatRequest<'a> {
     messages: &'a [crate::model::ChatMessage],
     temperature: f32,
     max_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_k: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repetition_penalty: Option<f32>,
     stream: bool,
     #[serde(skip_serializing_if = "slice_is_empty")]
     tools: &'a [crate::model::ToolDefinition],
@@ -559,11 +599,53 @@ fn disabled_thinking() -> &'static serde_json::Value {
 }
 
 #[derive(Deserialize)]
-struct DecisionWire {
-    label: String,
-    confidence: f64,
+struct SystemOneResponse {
     #[serde(default)]
-    rationale: Option<String>,
+    model: Option<String>,
+    #[serde(default)]
+    answers: BTreeMap<String, SystemOneAnswer>,
+}
+
+#[derive(Deserialize)]
+struct SystemOneAnswer {
+    #[serde(rename = "type", default)]
+    kind: Option<String>,
+    #[serde(default)]
+    choice: Option<String>,
+    #[serde(default)]
+    confidence: Option<f64>,
+    #[serde(default)]
+    probabilities: Option<BTreeMap<String, f64>>,
+}
+
+impl SystemOneAnswer {
+    /// A one-line account of the distribution, for the route status line.
+    fn rationale(&self, label: &str, confidence: f64) -> String {
+        let Some(probabilities) = &self.probabilities else {
+            return format!(
+                "systemone chose {label} at {:.0}% confidence",
+                confidence * 100.0
+            );
+        };
+        let mut ranked = probabilities.iter().collect::<Vec<_>>();
+        ranked.sort_by(|left, right| {
+            right
+                .1
+                .partial_cmp(left.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let next = ranked
+            .iter()
+            .find(|(candidate, _)| candidate.as_str() != label)
+            .map(|(candidate, probability)| {
+                format!("; next {candidate} {:.0}%", *probability * 100.0)
+            })
+            .unwrap_or_default();
+        format!(
+            "systemone chose {label} at {:.0}% confidence{next}",
+            confidence * 100.0
+        )
+    }
 }
 
 /// Convenience for tests and tools that need an owned label map.

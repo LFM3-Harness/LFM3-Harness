@@ -1118,7 +1118,194 @@ npm test
 npm run build
 ```
 
-Expected: all Rust tests pass (41 harness library, 18 desktop plus one ignored real-voice test, 14 tool integration), 57 Vitest tests pass, and the production build succeeds. Run `cargo test -p lfm3-desktop lfm3_voice_supervisor -- --ignored` on a machine with the installed pair to exercise real speech. Do not claim full real-model qualification: routing, search, vision, audio, report writing, and Tauri playback still need a measured run with the installed GGUFs. `llama-tts` itself is verified directly and through the runtime path.
+Expected: all Rust tests pass (41 harness library at this task; Task 25 raises it to 60), 18 desktop plus one ignored real-voice test, 14 tool integration, 57 Vitest tests pass, and the production build succeeds. Run `cargo test -p lfm3-desktop lfm3_voice_supervisor -- --ignored` on a machine with the installed pair to exercise real speech. Do not claim full real-model qualification: routing, search, vision, audio, report writing, Tauri playback, and the profile-shaped job phases still need a measured run with the installed GGUFs. `llama-tts` itself is verified directly and through the runtime path.
+
+---
+
+### Task 24: Shape the stated-job loop around the LFM3 model envelope
+
+**Status:** implemented on 2026-10-31. The scripted loop tests pass and all Rust and UI gates are green. A measured real-model run of the new phases is still open.
+
+**Goal:** replace the generic free-form job loop with phases, a plan gate, deterministic step checks, and a review turn derived from the known strengths and weaknesses of LFM3-1.7B, so the harness compensates for the model instead of assuming general-agent behavior.
+
+**Files:**
+- Create: `crates/lfm3-harness/src/agent/profile.rs`, `crates/lfm3-harness/tests/loop_agent.rs`
+- Modify: `crates/lfm3-harness/src/agent/mod.rs`, `agent/loop_agent.rs`, `lib.rs`, `job.rs`, `task.rs`
+- Modify: `apps/desktop/src-tauri/src/jobs.rs`, `engine.rs`
+- Modify: `crates/lfm3-cli/src/main.rs`
+- Modify: `apps/ui/src/bridge/types.ts`, `bridge/jobReducer.ts`, `components/TodoTimeline.tsx`, `components/TaskComposer.tsx`, `index.css`
+
+**Interfaces:**
+- Produces: `ModelProfile { name, role, strengths, weaknesses, guidance, max_turns, max_calls, replay, max_output_tokens, max_plan_steps }`, `LFM3_TEXT`, `ModelProfile::loop_options(requested_turns) -> LoopOptions`, `ModelProfile::report() -> serde_json::Value`.
+- Produces: `TodoCheck`, `TodoCheckKind` (`FileExists`, `DirExists`, `ContentMatches`), `LoopPhase` (`Plan`, `Work`, `Review`); `TodoItem.check`, `LoopTurn.phase`, `LoopOptions.plan_first`, `LoopOptions.max_plan_steps`.
+- Produces: `JobTodoCheck`, `JobTodo.check`, `JobTurn.phase`; the `loop.turn` payload carries `phase`, and each todo carries its check.
+- Produces: `Route::tools()` always includes `search_files` and `related_files`, plus `look`/`transcribe` only for routed senses; `/health` carries `model_profile`.
+- Consumes: the existing `ToolRegistry`, `ChatRequest`, the job store and event stream, and the route from `TaskRouter`.
+
+- [ ] **Step 1: Codify the model profile and derive loop limits**
+
+Add `agent/profile.rs` with the envelope for LFM3-1.7B: strengths (bounded instruction following, short-context extraction, strict tool/JSON envelopes, concrete local edits, using concrete failure feedback) and weaknesses (long-horizon planning without a written plan, recalling unread content, self-certification, recovering from repeated failures, large working sets). `LFM3_TEXT` fixes `max_turns: 64`, `max_calls: 3`, `replay: 8`, `max_output_tokens: 2048`, `max_plan_steps: 8`. `loop_options` clamps a requested turn budget to the profile and always sets `plan_first`. Export the types from `agent/mod.rs` and `lib.rs`.
+
+```rust
+#[test]
+fn the_profile_bounds_a_requested_turn_budget() {
+    let options = LFM3_TEXT.loop_options(999);
+    assert_eq!(options.max_turns, 64);
+    assert!(options.plan_first);
+}
+```
+
+- [ ] **Step 2: Add the plan gate and check-verified steps**
+
+Expand `TodoItem` with an optional `TodoCheck`. In `apply_todos`, parse the check, reject a check path that leaves the workspace, require a non-empty `contains` for `content_matches`, and evaluate every `done` claim against the real workspace. A failed check demotes the step and returns the concrete reason in the tool output. Empty first plans and plans over `max_plan_steps` are refused. In the loop, start in `Plan` when `plan_first` and more than one turn is allowed: offer only `todo_write`, refuse `finish`, and move to `Work` only after a non-empty plan. A refused pre-execution call must not enter the duplicate-call set.
+
+```rust
+#[test]
+fn a_finished_step_must_pass_its_real_check() {
+    // out/report.md contains "alpha beta".
+    // done + content_matches "alpha" stays done;
+    // done + content_matches "gamma" is demoted with a reason.
+}
+```
+
+- [ ] **Step 3: Enforce phase tool policy and add the review turn**
+
+Add `tool_allowed(tool, phase, must_write)` and derive both the offered definitions and the executable set from it: no workspace tools in `Plan`, reads/edits/writes in `Review`, and only `write_file` in `Work` once `must_write` is set. Writing a non-empty deliverable transitions to `Review`, clears `must_write` so the output can be read, and records `reviewed` when the deliverable is read back. A first `finish` in `Review` without a re-read is refused once with a concrete instruction; completion still requires `verify_deliverable`. A stalled review with a valid proof passes; a plan-phase stall after three turns stops with `stalled`.
+
+```rust
+#[tokio::test]
+async fn the_plan_gate_refuses_workspace_actions_on_the_first_turn() {
+    // Turn 1 scripts read_file; it is refused with "plan phase" and the
+    // job still reaches a measured pass after planning and writing.
+}
+```
+
+- [ ] **Step 4: Route job tools and report the profile**
+
+Change `Route::tools()` to always include `search_files` and `related_files` before read/write/edit, adding `look` and `transcribe` only for selected senses. In the desktop engine, grant exactly `route.tools()` through `ToolName::parse` and refuse an unknown route tool. Use `LFM3_TEXT.loop_options(request.max_turns)` and `max_output_tokens` for both the desktop job runner and the CLI, and add `model_profile` to `/health`.
+
+```rust
+let runner = AgentLoop::new(gateway, Arc::new(registry), model.clone())
+    .with_options(LFM3_TEXT.loop_options(request.max_turns))
+    .with_max_tokens(LFM3_TEXT.max_output_tokens);
+```
+
+- [ ] **Step 5: Surface phases and checks in the job UI**
+
+Add `JobTodoCheck` and optional `check` on `JobTodo`, plus optional `phase` on `JobTurn`. Validate both in `jobReducer` (dropping a malformed check rather than rendering it), and render a phase chip per turn and a per-todo status of `verified`, `done (unchecked)`, or `open`. Update the job composer copy to explain the short checked plan, one bounded action, check-gated done, and re-read before finish. Add `.todo-check` and `.turn-phase` styles.
+
+- [ ] **Step 6: Test and verify**
+
+Add `tests/loop_agent.rs` with a scripted gateway covering: a planned, checked, reviewed pass; the plan gate refusing a workspace action on turn 1; `finish` refused once before a re-read; and the profile as the turn ceiling. Update the route tool expectation in `task.rs` and the reducer expectation for checks. Run:
+
+```powershell
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cd apps/ui
+npm run typecheck
+npm test
+npm run build
+```
+
+Expected: 47 harness library tests, 4 `loop_agent` integration tests, all other Rust suites pass, 57 Vitest tests pass, and the production build succeeds. Real-model qualification of the new phases remains open; do not claim it from these scripted tests.
+
+### Task 25: Cover each local model's documented weaknesses with a harness helper
+
+**Status:** implemented on 2026-10-31. All Rust and UI gates are green, and a measured real-model job still passes with the new sampling and advisory grounding note.
+
+**Goal:** record the published envelope of all four local models in one place, lean acting on LFM3-1.7B's documented strengths, and add a deterministic helper for every documented weakness: measured sense facts, a d1 confidence floor, and an advisory grounding check.
+
+**Files:**
+- Create: `crates/lfm3-harness/src/agent/grounding.rs`
+- Modify: `crates/lfm3-harness/src/agent/profile.rs`, `agent/mod.rs`, `agent/loop_agent.rs`, `agent/executor.rs`
+- Modify: `crates/lfm3-harness/src/model/types.rs`, `model/client.rs`, `tools/senses.rs`, `chat/router.rs`, `lib.rs`
+- Modify: `apps/desktop/src-tauri/src/engine.rs`
+- Modify: `crates/lfm3-harness/tests/loop_agent.rs`, `tests/tools.rs`, `tests/model_client.rs`
+- Modify: `README.md`, `PLAN.md`, `STEPS.md`
+
+**Interfaces:**
+- Produces: `ModelProfile { name, role, strengths, weaknesses, helpers, guidance, agentic, sampling, max_turns, max_calls, replay, max_output_tokens, max_plan_steps }`; constants `LFM3_TEXT`, `LFM3_VL`, `LFM3_AUDIO`, `D1`; `ModelProfile::ALL`, `all_reports()`.
+- Produces: `model::Sampling { temperature, top_k, repetition_penalty }`, `ChatRequest::with_sampling`, optional wire fields `top_k` and `repetition_penalty`.
+- Produces: `MIN_DECISION_CONFIDENCE_BPS`, `ChatRoute.confidence_floor_bps`; measured `harness facts` lines from `look` and `transcribe`.
+- Produces: `agent::grounding::{Grounding, check}`; the review brief carries an advisory note, never a status change.
+- Consumes: the job loop from Task 24, the shared model manager, and the route from Task 23.
+
+- [ ] **Step 1: Complete the four envelopes and the model-card sampling**
+
+Extend `ModelProfile` with `helpers`, `agentic`, and `sampling`. Add `LFM3_VL`, `LFM3_AUDIO`, and `D1` beside `LFM3_TEXT`, each naming at least three strengths, three weaknesses, and the helpers that cover them. Mark observation and decision models `agentic: false`; `loop_options` must return a single bounded turn for them. LFM3-1.7B uses temperature 0.1, top-k 50, repetition penalty 1.1; the others run greedily. Report all four from `/health` as `model_profiles` while keeping `model_profile` for the text model.
+
+```rust
+#[test]
+fn observers_and_the_classifier_never_plan() {
+    for profile in [LFM3_VL, LFM3_AUDIO, D1] {
+        assert!(!profile.agentic);
+        assert_eq!(profile.loop_options(64).max_turns, 1);
+        assert!(!profile.loop_options(64).plan_first);
+    }
+}
+```
+
+- [ ] **Step 2: Send sampling on the wire**
+
+Add optional `top_k` and `repetition_penalty` to `ChatRequest` and the wire body, with `with_sampling(Sampling)`. Use `LFM3_TEXT.sampling` in the acting loop instead of a hard-coded temperature. Omitted fields stay out of the JSON so an observation call at temperature 0 remains unchanged.
+
+```rust
+let chat = ChatRequest::new(messages)
+    .with_tools(offered)
+    .with_tool_choice("required")
+    .with_sampling(LFM3_TEXT.sampling);
+```
+
+- [ ] **Step 3: Return measured facts with each observation**
+
+In `look`, cap the image at 20 MB, parse PNG/JPEG/GIF/WebP dimensions, and precede the observation with `harness facts (measured): file=... format=... bytes=... dimensions=...`. Use `LFM3_VL.guidance` and `LFM3_VL.sampling`, and cap output at the profile budget. In `transcribe`, cap the recording at 64 MB, parse RIFF/WAVE `fmt `/`data` chunks for duration, sample rate, channels, and bit depth, and precede the verbatim transcript with the same measured header. Never guess a property the container does not expose.
+
+```rust
+#[test]
+fn wav_facts_carry_duration_and_format() {
+    let facts = audio_facts("note.wav", "audio/wav", &wav(16_000, 1, 16, 16_000), None);
+    assert!(facts.contains("duration=1.00s"));
+}
+```
+
+- [ ] **Step 4: Make the d1 confidence floor explicit**
+
+Name the 5,500-bps floor, apply it through one predicate, bound the evidence to 8,000 characters, and expose the floor on `ChatRoute` for diagnostics. Below the floor, or for a `general` label, the deterministic keyword route wins. Routing still never grants tool authority.
+
+```rust
+fn accepts_decision(confidence_bps: u16, intent: ChatIntent) -> bool {
+    confidence_bps >= MIN_DECISION_CONFIDENCE_BPS && intent != ChatIntent::General
+}
+```
+
+- [ ] **Step 5: Add the advisory grounding note to review**
+
+Extract distinct multi-digit numbers (and decimals) from the deliverable and compare them with numbers in the goal, the plan, and successful `read_file`, `look`, and `transcribe` outputs. Exclude a re-read of the deliverable itself. Append unsourced numbers to the review brief with wording that they must be verified or removed. Never alter `LoopStatus` and never block `finish`.
+
+```rust
+#[test]
+fn a_number_the_model_never_saw_is_flagged() {
+    let grounding = check("Revenue was 1,200 units in 2019.", &["Revenue was 1200 units."]);
+    assert_eq!(grounding.unsupported, vec!["2019".to_owned()]);
+}
+```
+
+- [ ] **Step 6: Test and verify**
+
+Extend the scripted loop test to assert the review brief carries the grounding note, that a sourced number is not flagged, and that the acting request carries temperature 0.1, top-k 50, and repetition penalty 1.1. Extend the tools test to assert both measured headers, and the client test to assert the sampling fields on the wire. Run:
+
+```powershell
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cd apps/ui
+npm run typecheck
+npm test
+npm run build
+```
+
+Expected: 60 harness library tests, 5 `loop_agent` integration tests, 14 tool integration tests, all other Rust suites pass, 57 Vitest tests pass, and the production build succeeds. Then run one real LFM3-1.7B job to confirm the loop still plans, writes, reviews, and passes with the new sampling and grounding note.
 
 ---
 
@@ -1126,11 +1313,11 @@ Expected: all Rust tests pass (41 harness library, 18 desktop plus one ignored r
 
 ```text
 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11
-                                           ├→ 12 → 13 → 14 → 15 → 16 → 18 → 19 → 20 → 21 → 22 → 23
+                                           ├→ 12 → 13 → 14 → 15 → 16 → 18 → 19 → 20 → 21 → 22 → 23 → 24 → 25
                                            └→ 17 ────────────────────→ 18
 ```
 
-Task 17 may begin after Task 11 only if it does not delay the first desktop release. Task 18 is the verified-task release gate. Tasks 19–22 add the chat-first cowork surface on top of the accepted engine; Task 22 is the final static, UI, and documentation gate for the current release.
+Task 17 may begin after Task 11 only if it does not delay the first desktop release. Task 18 is the verified-task release gate. Tasks 19–22 add the chat-first cowork surface on top of the accepted engine; Task 22 is the final static, UI, and documentation gate for the current release. Task 24 reshapes the stated-job loop around the measured LFM3 envelope and depends on the job runner from Task 15 and the route-aware tools from Task 23. Task 25 completes the envelope for all four models and adds a helper for each documented weakness; it depends on the loop from Task 24.
 
 ## Stop-and-Rethink Signals
 
@@ -1144,4 +1331,9 @@ Task 17 may begin after Task 11 only if it does not delay the first desktop rele
 - A chat message or tool result can be cited as mission evidence: block release and separate the stores and event channels.
 - Voice falls back to a remote or hidden transcription service: block release; disable the microphone path instead.
 - Any owned process survives packaged shutdown: block release and fix Job Object assignment or child creation flags.
+- A real job spends three turns failing the plan gate, or a checked step repeatedly fails a check the model itself wrote: tighten the plan/check schema or the profile guidance; do not remove the gate or let `done` be self-certified.
+- The model keeps calling `finish` in review without a re-read: keep the measured proof as the pass condition and surface the skipped review; do not accept prose as evidence.
+- The grounding note blocks a job or rewrites the output on its own: keep it advisory; the measured deliverable proof remains the only completion authority.
+- A profile claims a capability that this machine's weights have not demonstrated: remove the claim or mark it unqualified; do not let a model card outweigh measured behavior.
+- An observation or decision model is offered the planning loop, or its confidence is treated as authority: fix the envelope wiring; none of the three is `agentic`.
 - A llama.cpp compatibility probe fails: retain b11960 / v0.8.0; do not patch around it with an unqualified runtime upgrade.

@@ -10,6 +10,10 @@ fn main() {
     }) {
         lfm3_desktop::smoke::run();
     }
+    // The multi-model benchmark drives the real engine without a window.
+    if std::env::args().any(|argument| argument == "--benchmark-chat") {
+        lfm3_desktop::chat_bench::run();
+    }
     lfm3_desktop::job_windows::maybe_run_forced_exit_probe();
     lfm3_desktop::run();
 }

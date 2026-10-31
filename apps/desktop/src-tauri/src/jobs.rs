@@ -12,7 +12,7 @@ use std::{
 };
 
 use lfm3_harness::{
-    agent::{AgentLoop, DeliverableProof, LoopOptions, LoopStatus},
+    agent::{AgentLoop, DeliverableProof, LoopStatus, LFM3_TEXT},
     job::{JobDeliverable, JobEvent, JobFinish, JobRecord, JobStart, JobStatus, JobStore, JobView},
     CancellationContext, ModelGateway, ToolRegistry,
 };
@@ -203,12 +203,8 @@ impl Inner {
         cancel: CancellationContext,
     ) {
         let runner = AgentLoop::new(gateway, Arc::new(registry), model.clone())
-            .with_options(LoopOptions {
-                max_turns: request.max_turns,
-                max_calls: 3,
-                replay: 8,
-            })
-            .with_max_tokens(2048);
+            .with_options(LFM3_TEXT.loop_options(request.max_turns))
+            .with_max_tokens(LFM3_TEXT.max_output_tokens);
 
         // The callback runs inside the loop, so it journals each turn before the
         // UI hears about it. A storage failure is logged, not hidden.

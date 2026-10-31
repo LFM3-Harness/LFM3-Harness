@@ -103,6 +103,19 @@ pub enum RouteSource {
     Heuristic,
 }
 
+/// Below this confidence the harness keeps the deterministic keyword route.
+///
+/// d1's confidence is a useful signal, but it needs calibration for each new
+/// task. The floor belongs to the harness, not to the model's own opinion of
+/// itself. At or above the floor the decision still only chooses a route; it
+/// never grants tool authority.
+pub const MIN_DECISION_CONFIDENCE_BPS: u16 = 5_500;
+
+/// Whether a decision is strong enough to replace the keyword route.
+fn accepts_decision(confidence_bps: u16, intent: ChatIntent) -> bool {
+    confidence_bps >= MIN_DECISION_CONFIDENCE_BPS && intent != ChatIntent::General
+}
+
 /// One local model role considered for the turn.
 #[derive(Clone, Debug, Serialize)]
 pub struct RouteRole {
@@ -118,6 +131,8 @@ pub struct ChatRoute {
     pub intent: ChatIntent,
     pub source: RouteSource,
     pub confidence_bps: u16,
+    /// The floor this turn had to clear to replace the keyword route.
+    pub confidence_floor_bps: u16,
     pub reason: String,
     pub model: Option<String>,
     pub roles: Vec<RouteRole>,
@@ -131,6 +146,7 @@ impl ChatRoute {
             intent,
             source: RouteSource::Heuristic,
             confidence_bps: 0,
+            confidence_floor_bps: MIN_DECISION_CONFIDENCE_BPS,
             reason: format!(
                 "keyword route chose {} because the request matches its task shape",
                 intent.as_str()
@@ -176,18 +192,27 @@ pub async fn route_request(
     cancel: &CancellationChild,
 ) -> ChatRoute {
     let fallback = ChatRoute::heuristic(message);
-    if message.trim().chars().count() < 24 || matches!(fallback.intent, ChatIntent::General) {
+    // Keywords are a poor judge of intent when no group fires: a short brief,
+    // a "which note" question, and a gist request all land on `general` while
+    // d1 reads them as task-shaped. Only truly tiny utterances skip the model,
+    // because they are greetings or acknowledgements rather than workspace
+    // requests. The confidence floor and the General veto still protect the
+    // heuristic route when d1 is unsure or answers only "conversation".
+    if message.trim().chars().count() < 24 {
         return fallback;
     }
     let labels = ChatIntent::ALL
         .into_iter()
         .map(|intent| (intent.label().to_owned(), intent.description().to_owned()))
         .collect::<BTreeMap<_, _>>();
+    // Keep the evidence well inside the range where d1 stays accurate; a route
+    // is decided from the request's shape, not its whole history.
+    let evidence = message.trim().chars().take(8_000).collect::<String>();
     let request = DecisionRequest::new(
         "Classify one request to a local workspace assistant. Choose the single best \
          task shape. The assistant can list, search, read, summarise, relate, and write \
          workspace files, inspect images, and transcribe audio.",
-        message.trim(),
+        evidence,
         labels,
     );
     match models.acquire(ModelKey::D1, cancel).await {
@@ -201,15 +226,27 @@ pub async fn route_request(
                 else {
                     return fallback;
                 };
-                if confidence_bps < 5_500 || intent == ChatIntent::General {
+                if !accepts_decision(confidence_bps, intent) {
+                    // A confident `general` answer is agreement with plain
+                    // conversation, not a weak signal: say so instead of
+                    // pretending the confidence was below the floor.
+                    let reason = if intent == ChatIntent::General {
+                        format!(
+                            "the decision model read the request as conversation at \
+                             {confidence_bps} bps; kept the keyword route"
+                        )
+                    } else {
+                        format!(
+                            "the decision model was below the {MIN_DECISION_CONFIDENCE_BPS}-bps \
+                             floor ({confidence_bps} bps); kept the keyword route"
+                        )
+                    };
                     return ChatRoute {
                         intent: fallback.intent,
                         source: RouteSource::Heuristic,
                         confidence_bps,
-                        reason: format!(
-                            "the decision model was not confident enough ({confidence_bps} bps); \
-                             kept the keyword route"
-                        ),
+                        confidence_floor_bps: MIN_DECISION_CONFIDENCE_BPS,
+                        reason,
                         model: Some(decision.model),
                         roles: roles_for(fallback.intent, true),
                     };
@@ -218,6 +255,7 @@ pub async fn route_request(
                     intent,
                     source: RouteSource::Decision,
                     confidence_bps,
+                    confidence_floor_bps: MIN_DECISION_CONFIDENCE_BPS,
                     reason: if decision.rationale.trim().is_empty() {
                         intent.hint().to_owned()
                     } else {
@@ -388,5 +426,16 @@ mod tests {
         let route = ChatRoute::heuristic("Hello, how are you?");
         assert_eq!(route.intent, ChatIntent::General);
         assert_eq!(route.source, RouteSource::Heuristic);
+    }
+
+    #[test]
+    fn a_low_confidence_decision_loses_to_the_keyword_route() {
+        assert!(!accepts_decision(5_499, ChatIntent::Vision));
+        assert!(accepts_decision(5_500, ChatIntent::Vision));
+        assert!(!accepts_decision(9_900, ChatIntent::General));
+        assert_eq!(
+            ChatRoute::heuristic("What is in this screenshot?").confidence_floor_bps,
+            MIN_DECISION_CONFIDENCE_BPS
+        );
     }
 }

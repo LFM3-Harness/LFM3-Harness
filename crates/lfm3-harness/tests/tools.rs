@@ -459,7 +459,20 @@ async fn transcribe_uses_the_shared_model_manager() {
         )
         .await
         .expect("transcription");
-    assert_eq!(result.output, "hello from audio");
+    assert!(
+        result
+            .output
+            .starts_with("harness facts (measured): file=note.wav format=audio/wav"),
+        "{}",
+        result.output
+    );
+    assert!(
+        result
+            .output
+            .ends_with("transcript (LFM3-Audio-2B, verbatim; no speaker labels or timestamps):\nhello from audio"),
+        "{}",
+        result.output
+    );
     assert_eq!(result.exit_code, None);
     assert_eq!(
         result.artifacts,
@@ -507,6 +520,13 @@ async fn look_attaches_the_image_to_the_vision_model() {
         .await
         .expect("look");
     assert!(result.output.contains("Save"), "{}", result.output);
+    assert!(
+        result
+            .output
+            .starts_with("harness facts (measured): file=shot.png format=image/png"),
+        "{}",
+        result.output
+    );
     assert_eq!(
         result.artifacts,
         vec![ContentDigest::of(&image, "image/png")]

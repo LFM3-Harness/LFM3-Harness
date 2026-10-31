@@ -1,4 +1,12 @@
-import type { JobDeliverable, JobEvent, JobRecord, JobTodo, JobTurn, JobView } from './types';
+import type {
+  JobDeliverable,
+  JobEvent,
+  JobRecord,
+  JobTodo,
+  JobTodoCheck,
+  JobTurn,
+  JobView,
+} from './types';
 
 export type JobPhase = 'idle' | 'loading' | 'live' | 'recovering' | 'error';
 
@@ -175,6 +183,7 @@ function readTurn(payload: JobEvent['payload']): JobTurn | null {
     return null;
   }
   const note = typeof payload['note'] === 'string' ? payload['note'] : '';
+  const phase = typeof payload['phase'] === 'string' ? payload['phase'] : undefined;
   const rawCalls = payload['calls'];
   const calls = Array.isArray(rawCalls)
     ? rawCalls.flatMap((entry) => {
@@ -195,7 +204,7 @@ function readTurn(payload: JobEvent['payload']): JobTurn | null {
         ];
       })
     : [];
-  return { index, note, calls };
+  return { index, phase, note, calls };
 }
 
 function readProof(value: unknown): JobDeliverable | null {
@@ -224,6 +233,24 @@ function readTodos(value: unknown): JobTodo[] | null {
     if (typeof text !== 'string' || text.trim().length === 0) {
       return [];
     }
-    return [{ text, done: entry['done'] === true }];
+    return [{ text, done: entry['done'] === true, check: readTodoCheck(entry['check']) }];
   });
+}
+
+function readTodoCheck(value: unknown): JobTodoCheck | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const kind = record['kind'];
+  const path = record['path'];
+  if (
+    (kind !== 'file_exists' && kind !== 'dir_exists' && kind !== 'content_matches') ||
+    typeof path !== 'string' ||
+    path.length === 0
+  ) {
+    return null;
+  }
+  const contains = typeof record['contains'] === 'string' ? record['contains'] : null;
+  return { kind, path, contains };
 }

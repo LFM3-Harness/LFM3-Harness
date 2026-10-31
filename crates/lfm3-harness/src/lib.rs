@@ -18,8 +18,9 @@ pub mod tools;
 pub mod verify;
 
 pub use agent::{
-    DeterministicVerifier, DriverError, Executor, IncompleteReason, PlanRequest, Planner,
-    PlannerError, RunOutcome, Runner, StepAction, StepDriver, StepExecution, StepRequest, Verifier,
+    DeterministicVerifier, DriverError, Executor, IncompleteReason, LoopPhase, ModelProfile,
+    PlanRequest, Planner, PlannerError, RunOutcome, Runner, StepAction, StepDriver, StepExecution,
+    StepRequest, TodoCheck, TodoCheckKind, Verifier, D1, LFM3_AUDIO, LFM3_TEXT, LFM3_VL,
 };
 pub use cancel::{CancelReason, CancellationChild, CancellationContext, Cancelled};
 pub use chat::{
@@ -32,7 +33,7 @@ pub use error::HarnessError;
 pub use ids::{ArtifactId, AttemptId, RunId, StepId};
 pub use job::{
     JobCall, JobDeliverable, JobEvent, JobFinish, JobRecord, JobStart, JobStatus, JobStore,
-    JobTodo, JobTurn, JobView,
+    JobTodo, JobTodoCheck, JobTurn, JobView,
 };
 pub use mission::{
     AcceptanceSpec, CheckSpec, ExecutionStrategy, FrozenAcceptance, InputArtifact, MissionManifest,

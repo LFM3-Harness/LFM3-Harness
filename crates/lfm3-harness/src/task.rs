@@ -172,10 +172,16 @@ impl Route {
     }
 
     /// Tools the task envelope grants, in a stable order.
+    ///
+    /// Search and related-file lookup are always granted: they are read-only,
+    /// workspace-confined, and the small text model needs them to find a
+    /// document without paging through an arbitrarily long listing.
     #[must_use]
     pub fn tools(&self) -> Vec<String> {
         let mut tools = vec![
             "list_files".to_owned(),
+            "search_files".to_owned(),
+            "related_files".to_owned(),
             "read_file".to_owned(),
             "write_file".to_owned(),
             "edit_file".to_owned(),
@@ -832,7 +838,14 @@ mod tests {
         assert!(!route.uses(Role::Judge));
         assert_eq!(
             route.tools(),
-            vec!["list_files", "read_file", "write_file", "edit_file"]
+            vec![
+                "list_files",
+                "search_files",
+                "related_files",
+                "read_file",
+                "write_file",
+                "edit_file"
+            ]
         );
     }
 

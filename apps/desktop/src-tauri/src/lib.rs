@@ -6,6 +6,7 @@
 //! command surface in this crate.
 
 pub mod chat;
+pub mod chat_bench;
 pub mod commands;
 pub mod engine;
 pub mod events;

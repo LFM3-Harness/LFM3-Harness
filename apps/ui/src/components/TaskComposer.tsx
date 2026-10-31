@@ -28,10 +28,12 @@ export function TaskComposer({ busy = false, demo = false, route, onStart }: Tas
     <section className="panel" aria-labelledby="task-composer-title">
       <h2 id="task-composer-title">Describe a job</h2>
       <p className="muted">
-        The engine hands the goal to the local text model and lets it work turn by turn. Each turn
-        it makes a tool call, sees the real result, and updates its todo list. It stops when the
-        required output exists and is proven, when the turn budget runs out, or when you stop it.
-        Nothing is pre-approved and nothing is claimed as verified work.
+        The engine hands the goal to the local text model and lets it work turn by turn. It first
+        writes a short plan with a check per step, then takes one bounded action at a time. A step
+        is only marked done when its check passes against the real workspace; after writing the
+        output the model re-reads it before finishing. It stops when the output is proven, when the
+        budget runs out, or when you stop it. Nothing is pre-approved and nothing is claimed as
+        verified work.
       </p>
       <form
         aria-label="General task"

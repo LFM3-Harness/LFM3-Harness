@@ -17,7 +17,7 @@ This repository is an all-Rust harness with a working desktop application and he
 - The Python implementation, tests, caches, and Python project configuration have been removed.
 - The local models, llama.cpp binaries, demo assets, and mission definitions have been preserved.
 - [PLAN.md](PLAN.md) is the full Rust-only system specification.
-- [STEPS.md](STEPS.md) is the ordered, test-driven implementation plan. Tasks 1–18 are complete; the chat surface is Tasks 19–22 and the multi-model workspace extension is Task 23. The packaged release acceptance is recorded in [`tests/golden/release-manifest.json`](tests/golden/release-manifest.json).
+- [STEPS.md](STEPS.md) is the ordered, test-driven implementation plan. Tasks 1–18 are complete; the chat surface is Tasks 19–22, the multi-model workspace extension is Task 23, the profile-shaped job loop is Task 24, and the four-model envelope helpers are Task 25. The packaged release acceptance is recorded in [`tests/golden/release-manifest.json`](tests/golden/release-manifest.json).
 - Semantic holdout qualification has **not** been performed. Only `desk_task` has an end-to-end real-model acceptance; the three semantic missions remain `human_review_only`.
 
 The desktop application performs no downloads at runtime. The Tauri CLI fetches its own NSIS packaging tooling at **build** time, never from the installed application.
@@ -75,15 +75,26 @@ The `desk_task` fixture set under `tests/fixtures/desk_task/` covers a passing r
 cargo run -p lfm3-cli -- job --goal "Read notes/ and write out/report.md, one section per note" --workspace ./demo --minutes 30 --events -
 ```
 
+The loop is shaped around the measured envelope of the local model. `agent::profile::LFM3_TEXT` records what the 1.7B model does well (short instruction following, strict tool envelopes, concrete local edits, using concrete failure feedback) and where it fails (long-horizon planning without a written plan, recalling unread content, self-certification, inventing figures, recovering from repeated failures, large working sets). Those limits, not a generic default, cap turns, per-turn calls, replay, and plan size, and the acting call uses the model card's sampling (temperature 0.1, top-k 50, repetition penalty 1.1). `/health` reports the same profile.
+
+The same file records the other three roles, each with the helper that covers its documented weakness: LFM3-VL-2B observes one image at a time and receives measured format, byte, and dimension facts because it cannot know them; LFM3-Audio-2B transcribes verbatim and receives measured container facts because it is not an analyst and does not label speakers or timestamps; d1-2B only routes or classifies a closed label set, and its confidence must clear a harness-owned floor or the deterministic keyword route wins. None of the three is `agentic`; the harness refuses to hand any of them the planning loop.
+
+A job moves through three phases, and the offered tool list is a rule the harness enforces, not a suggestion:
+
+- **plan.** Before any workspace action, the model must call `todo_write` with one to eight short steps. The plan cannot be empty, and `finish` is refused until it exists. Every step that creates or changes a file should carry a deterministic check (`file_exists`, `dir_exists`, or `content_matches` with a non-empty needle).
+- **work.** One bounded action at a time advances an open step. Marking a step done is measured: the harness runs its check against the real workspace and demotes a `done` claim whose check fails. Once every source is read, the tool set narrows to `write_file` so the only way forward is the artifact.
+- **review.** Writing a non-empty deliverable opens a review turn: the model re-reads the file, compares it with the goal, and either repairs it or finishes. A first `finish` without a re-read is refused once with a concrete instruction; the measured proof still decides the result. The brief also carries an advisory grounding note listing multi-digit numbers in the output that appear in no observed source, so the model can verify or remove them. The note never changes the status.
+
 The loop is bounded the same way the rest of the harness is:
 
 - **The model cannot grade itself.** `finish` is accepted only when the required output exists and is non-empty; the report carries the measured bytes and digest. A bare "finished" is refused and the model is told to keep working.
-- **Every turn is evidence.** Each tool call and its real output is recorded, and a repeated identical call is refused instead of quietly looping.
+- **Every turn is evidence.** Each tool call and its real output is recorded, and a repeated identical call is refused instead of quietly looping. A call refused before execution (wrong phase, guard, duplicate) never counts as "seen", so a later phase can still take it.
 - **The harness steers, it does not just hope.** Unread sources are named in the prompt, and once they have all been read the tool set narrows to `write_file` so the only way forward is the artifact.
 - **Writes are guarded.** An empty or placeholder write is refused, and a source file the job is supposed to read cannot be overwritten.
-- **It stops honestly.** Status is `passed`, `unverified`, `turn_budget`, `deadline`, or `stalled`; six turns without a write, or a turn cap, is never reported as success.
+- **Tools follow the route.** `search_files` and `related_files` are always granted; `look` and `transcribe` only when the route selects the vision or audio model. Routing widens capability, never authority.
+- **It stops honestly.** Status is `passed`, `unverified`, `turn_budget`, `deadline`, or `stalled`; three turns without a plan, six turns without a write, or a turn cap is never reported as success. A measured artifact can still pass a stalled review turn.
 
-`--minutes` is the whole-job deadline, `--max-turns` caps model turns, and `--max-calls` caps tool calls per turn.
+`--minutes` is the whole-job deadline, `--max-turns` caps model turns, and `--max-calls` caps tool calls per turn. The profile is the ceiling: a larger request is clamped to what the model can actually sustain.
 
 ## General tasks
 
@@ -104,13 +115,13 @@ The task router reads the goal and the workspace file names, then grants only th
 | `observe` | LFM3-VL-2B | the workspace holds images, or the goal asks about one |
 | `hear` | LFM3-Audio-2B | the workspace holds audio, or the goal asks for a transcript |
 
-`look` and `transcribe` are granted exactly when their model is routed, and the CLI and desktop shell register whichever weights are provisioned; nothing is downloaded. The d1 classifier stays with the mission semantic checks, which general tasks cannot use: task verification is deterministic.
+`look` and `transcribe` are granted exactly when their model is routed, and the CLI and desktop shell register whichever weights are provisioned; nothing is downloaded. d1 is not part of job planning or task verification: every job step is judged only by deterministic checks, and semantic mission checks stay disabled because every shipped semantic mission is `human_review_only`.
 
 A job is multi-step by design. `--minutes` sets the whole-job deadline (default 30), `--steps` caps the plan (default 16), and `--min-steps` refuses a plan that collapses into one call (default 2). Each planned step is one verified workspace action, and every completed step's output is carried into the next step's prompt, so a later step can use what an earlier step actually read. The plan still names only real workspace files: the planner receives a bounded file listing, and an output path stated in the goal (for example `out/report.md`) is frozen as the required artifact.
 
 Every step must declare at least one check, and a `write_file` or `edit_file` step whose checks name no file path is rejected before the acceptance is frozen, so an untestable step never runs. A read step is verified by the source it reads; when a plan emits only checks that cannot apply to a read, the harness keeps the runnable source-existence check instead of accepting a check that could never pass. General tasks have no command templates, so they cannot author a shell command. The run keeps the usual approval gate, budgets, retries, and journal.
 
-The desktop job form is the loop, not the plan-first path. **Describe a job** asks for a goal, an optional required output, a minute budget, and a turn cap; the engine then runs the same model-driven loop as `lfm3 job` and streams every turn to the app. The panel below it shows the model's own todo list, each turn's tool calls with their real outputs, and the measured output bytes and digest — no acceptance hash, because a job is not verified mission work. Jobs live in `jobs.db` in the trusted data directory, events arrive on `lfm3:job-event`, and a job the engine stopped in the middle of is reported as `interrupted` rather than resumed. `lfm3 task` is still available for the stricter plan-first path, and verified missions keep their frozen acceptance flow.
+The desktop job form is the loop, not the plan-first path. **Describe a job** asks for a goal, an optional required output, a minute budget, and a turn cap; the engine then runs the same model-driven loop as `lfm3 job` and streams every turn to the app. The panel below it shows each turn's phase, the model's own todo list with its per-step check and status (`verified`, `done (unchecked)`, or `open`), each turn's tool calls with their real outputs, and the measured output bytes and digest — no acceptance hash, because a job is not verified mission work. Jobs live in `jobs.db` in the trusted data directory, events arrive on `lfm3:job-event`, and a job the engine stopped in the middle of is reported as `interrupted` rather than resumed. `lfm3 task` is still available for the stricter plan-first path, and verified missions keep their frozen acceptance flow.
 
 ## Desktop application
 
@@ -140,7 +151,7 @@ Installer: `target/release/bundle/nsis/LFM3 Workspace_0.1.0_x64-setup.exe`. The 
 The application opens on chat. Conversations are stored in `chat.db` inside the trusted data directory, so they survive restarts. The sidebar lists past conversations and links to **Verified tasks**; chat and mission runs share the engine, model manager, and process supervisor, but not their completion rules.
 
 - **One bounded turn at a time.** A turn streams the model response, can use at most twelve tool rounds, and then returns control. Stop cancels the stream and any pending approval. A second send while a turn is active is refused with a visible error rather than queued.
-- **Decision-model routing.** When `d1-2B` is installed, each non-trivial request is classified into a task shape (`general`, `explore`, `summarize`, `related`, `report`, `vision`, `voice`) before the text model runs. A calibrated keyword route is used when d1 is absent, unavailable, or below 55% confidence. The chosen intent, source, confidence, and the local model roles for the turn are shown in the transcript and carried into the system prompt. Routing selects capability hints only; it never grants authority or bypasses approval.
+- **Decision-model routing.** When `d1-2B` is installed, every message of at least 24 characters is classified into a task shape (`general`, `explore`, `summarize`, `related`, `report`, `vision`, `voice`) before the text model runs, through d1's native `POST /v1/systemone` decision endpoint; shorter greetings skip it. A confident non-general answer (at least 55%) replaces a calibrated keyword route, while a confident `general` answer keeps conversation. The chosen intent, source, confidence, and the local model roles for the turn are shown in the transcript and carried into the system prompt. If d1 is absent, unavailable, below the floor, or returns an undeclared label, the keyword route stands. Routing selects capability hints only; it never grants authority or bypasses approval. The benchmark below records the route and confidence for every case.
 - **Workspace-confined tools.** The text model can call `list_files`, `read_file`, `search_files`, `related_files`, `write_file`, and `edit_file`. `search_files` matches names and text across the workspace without a shell; `related_files` compares one file's distinctive terms with the other text files. Paths outside the workspace are rejected by the same `ToolRegistry` used by verified missions. `look` is offered only when the vision model is installed, and `transcribe` only when the audio model is installed. Reads and searches execute immediately; writes and edits create a pending action.
 - **Folder analysis and reports.** The system prompt requires the model to map a folder, open the files it summarises, and gather evidence before proposing a report. A report is a normal `write_file` action to a named Markdown path, so it appears as an exact diff and is written only after approval.
 - **Image attachments.** The composer's **+img** control stores a user-chosen PNG, JPEG, WebP, or GIF under `.attachments/<uuid>-<name>.<ext>` inside the workspace (20 MB limit), then inserts a workspace-relative instruction. The model inspects it with `look`, which loads the image through the local vision model. This attachment is user-initiated, is not a model write, and never touches the verified run journal.
@@ -151,7 +162,40 @@ The application opens on chat. Conversations are stored in `chat.db` inside the 
 - **Local LFM3 voice output.** **Speak** and the header **Voice replies** toggle call `synthesize_speech`, which renders one answer with `llama-tts` using the same LFM3-Audio-2B weight and `mmproj` that listen. The health report exposes `voice_output.backend = "lfm3-tts"`, `model = "LFM3-Audio-2B"`, and `lfm3_tts_weights = true` when the binary and both files are present. The model card specifies the pinned b11960 runtime, `--tts-voice female|male`, and audio sampling at temperature 1.0, top-k 128, repetition penalty 1.1; this harness uses the documented defaults. A 120-second watchdog kills the owned `llama-tts` process, and the temporary WAV is removed after it is returned. Nothing is uploaded, and no voice is downloaded. If the voice pair is incomplete, Windows falls back to the offline system voice and labels it `system-sapi`.
 - **Separation from verification.** Chat messages, tool output, and approvals never satisfy a mission check, and a verified run never writes through the chat approval path. Verified work still starts from the mission forms and is judged only by frozen acceptance checks.
 
-The chat runtime has unit, reducer, and component coverage, but real-model routing, folder search, tool calling, streaming, vision attachments, and audio transcription have **not** been qualified end-to-end. Speech output is further along: `llama-tts` rendered 2.96 s of 24 kHz audio in 0.59 s, and the ignored runtime test exercises the same owned-process path and validates the returned WAV. The Tauri chat flow and in-app playback still need a measured run. If a model emits no valid tool call or an optional model is absent, the UI surfaces the failure instead of fabricating success. The demo fixture mode (`?demo=1` in development) renders the verified-task surface only; chat is intentionally unavailable there and says so.
+The chat runtime has unit, reducer, and component coverage. Its real-model path is now measured end to end by the multi-model benchmark below: d1 routing, tool calling, folder search, vision attachments, and audio transcription all ran against the pinned weights. Two gaps remain explicit. In-app playback of the LFM3 voice is covered by the ignored runtime test and the UI components, not by the headless probe, and the probe never opens the Tauri webview. If a model emits no valid tool call or an optional model is absent, the UI surfaces the failure instead of fabricating success. The demo fixture mode (`?demo=1` in development) renders the verified-task surface only; chat is intentionally unavailable there and says so.
+
+### Multi-model benchmark
+
+`bench/multimodel` is a real harness benchmark, not a mock. It boots the production engine headlessly with `lfm3-desktop --benchmark-chat`, uses the pinned local weights on ports 8080–8083, records every route and turn, and grades the output independently. It answers four questions:
+
+- Does the router choose the right shape, and how much of that comes from d1 rather than keywords?
+- Does d1 actually receive the prompt, or silently fall back?
+- Does a routed turn reach the related model (vision for `vision`, audio for `voice`, text for conversation) and use it?
+- Does the conversation model complete the turn, including tools, approvals, files, and content?
+
+```powershell
+node bench/multimodel/run.mjs            # full run; ports 8080-8083 must be free
+node bench/multimodel/run.mjs --regrade  # re-apply checks to the recorded raw results
+```
+
+The probe uses an isolated workspace under `tmp/bench-multimodel`, keeps `raw-results.json` and `probe.log`, and writes [REPORT.md](bench/multimodel/REPORT.md) and [results.json](bench/multimodel/results.json). Measured on this machine in one run on 2026-10-31:
+
+| Area | Measured |
+| --- | --- |
+| Router final accuracy | 21/21 (14/21 from keywords alone) |
+| d1 consulted / route replaced | 21/21 / 20, 0 regressions |
+| d1 overrides won on wrong keyword routes | 7/7 |
+| Keyword blind spots recovered by d1 | 3/3 |
+| Median route latency | 118 ms |
+| Chat turns (tools, approvals, files, content) | 12/12 |
+| Vision role (`look` on attachments) | 2/2 |
+| Voice role (`transcribe`) | 1/1 |
+| Local TTS + ASR round trip | 2/2 at 0% text WER |
+| Text conversation | 12/12 graded turns |
+
+The benchmark found two real defects. d1 was being called on `/v1/chat/completions`, which a native decision model answers with `HTTP 501`; routing had been silently using keywords for every request. The client now speaks the `/v1/systemone` choice protocol and enforces the declared label, the `choice` type, and a `[0,1]` confidence. Separately, an approved chat action could stay `approved`, because the store only accepted transitions from `pending`; `approved -> applied|failed` now works and preserves `decided_at`.
+
+Caveats: these numbers describe one machine, one run, 21 router cases, and deterministic synthetic fixtures. The vision checks use generated PNGs, audio WER is text-level, and the probe does not open the Tauri webview or exercise in-app playback. Automatic semantic judging is still disabled (`human_review_only`) and is not part of this benchmark.
 
 ### Local setup
 
@@ -231,7 +275,9 @@ cargo test --workspace
 cd apps/ui; npm run typecheck; npm test; npm run build; npx playwright test
 ```
 
-Observed on 2026-10-31: formatting and clippy clean; all workspace Rust tests passed, including 41 harness library tests, 18 desktop tests, and 14 tool integration tests with `search_files` coverage; UI typecheck and production build passed; 57 Vitest tests passed (including decision-route reducer and message-bubble coverage). The eight Playwright demo scenarios were previously green and target only the verified-task surface. The ignored `lfm3_voice_supervisor_renders_a_valid_wav` test also passed against the installed pair through the real owned-process path. Real-model chat routing, folder search, report writing, vision, audio, and UI playback of the LFM3 voice remain open.
+Observed on 2026-10-31: formatting and clippy clean; all workspace Rust tests passed, including 60 harness library tests, 5 scripted loop tests, 18 desktop tests, and 14 tool integration tests with `search_files` coverage (236 tests in the harness package); UI typecheck and production build passed; 57 Vitest tests passed (including decision-route reducer, message-bubble, and job-check coverage). The eight Playwright demo scenarios were previously green and target only the verified-task surface. The ignored `lfm3_voice_supervisor_renders_a_valid_wav` test also passed against the installed pair through the real owned-process path.
+
+The four-envelope update was also exercised against the real model through the profile-shaped loop. `lfm3 job --goal "Read notes.md and write out/report.md with a short summary of the coffee machine cleaning checklist" --workspace tmp/real-loop --deliverable out/report.md --minutes 10 --max-turns 24 --events tmp/real-loop-events.jsonl` exited 0 with `status: "passed"` and `stopped: "the output verified after a review turn"` in four turns: plan (`todo_write`), work (`read_file notes.md`), work (`write_file` 483 bytes to `out/report.md`), review (`read_file out/report.md`). The report carries the measured 483 bytes and digest `35b845745a0c6a4a`. Real-model chat routing, folder search through chat, vision, and audio transcription are measured by the multi-model benchmark: 21/21 routes, 12/12 chat turns, 12/12 text turns, 2/2 vision, 1/1 voice, and 2/2 TTS+ASR. In-app playback of the LFM3 voice remains covered by component and runtime tests only, and automatic semantic judging remains disabled because every shipped semantic mission is `human_review_only`.
 
 ### Packaged real-model acceptance
 

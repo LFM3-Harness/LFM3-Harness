@@ -99,8 +99,22 @@ export function TodoTimeline({
                 <span className="todo-box" aria-hidden="true">
                   {todo.done ? '✓' : '○'}
                 </span>
-                <span>{todo.text}</span>
-                <span className="muted">{todo.done ? 'done' : 'open'}</span>
+                <span>
+                  {todo.text}
+                  {todo.check ? (
+                    <span className="todo-check mono">
+                      {todo.check.kind} {todo.check.path}
+                      {todo.check.contains ? ` · “${todo.check.contains}”` : ''}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="muted">
+                  {todo.done
+                    ? todo.check
+                      ? 'verified'
+                      : 'done (unchecked)'
+                    : 'open'}
+                </span>
               </li>
             ))}
           </ul>
@@ -116,6 +130,7 @@ export function TodoTimeline({
             <li key={turn.index} className="turn" aria-label={`Turn ${turn.index}`}>
               <header>
                 <span className="turn-index">Turn {turn.index}</span>
+                {turn.phase ? <span className="turn-phase mono">{turn.phase}</span> : null}
                 <span className="muted">
                   {turn.calls.length === 0
                     ? 'no tool call'

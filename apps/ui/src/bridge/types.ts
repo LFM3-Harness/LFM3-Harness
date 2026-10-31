@@ -509,10 +509,18 @@ export interface JobRecord {
   finished_at: number | null;
 }
 
+/** A deterministic check a plan step attaches to itself. */
+export interface JobTodoCheck {
+  kind: 'file_exists' | 'dir_exists' | 'content_matches';
+  path: string;
+  contains?: string | null;
+}
+
 /** One item of the acting model's own plan, as it last wrote it. */
 export interface JobTodo {
   text: string;
   done: boolean;
+  check?: JobTodoCheck | null;
 }
 
 export interface JobCall {
@@ -524,6 +532,8 @@ export interface JobCall {
 
 export interface JobTurn {
   index: number;
+  /** plan, work, or review; absent on journals from older engines. */
+  phase?: string;
   note: string;
   calls: JobCall[];
 }

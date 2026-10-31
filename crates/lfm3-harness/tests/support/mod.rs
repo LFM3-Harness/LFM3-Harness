@@ -19,8 +19,10 @@ use tokio::{
 pub struct FakeConfig {
     pub models: String,
     pub chat: String,
+    pub decision: String,
     pub transcription: String,
     pub chat_status: u16,
+    pub decision_status: u16,
     pub chat_delay: Duration,
 }
 
@@ -30,8 +32,26 @@ impl FakeConfig {
         Self {
             models: models_fixture(models),
             chat: chat.into(),
+            // A text server rejects decisions the way llama.cpp does for a
+            // non-decision model.
+            decision: r#"{"error":{"code":501,"message":"not a decision model","type":"not_supported_error"}}"#
+                .to_owned(),
             transcription: r#"{"text":""}"#.to_owned(),
             chat_status: 200,
+            decision_status: 501,
+            chat_delay: Duration::ZERO,
+        }
+    }
+
+    #[must_use]
+    pub fn decision(models: &[&str], decision: impl Into<String>) -> Self {
+        Self {
+            models: models_fixture(models),
+            chat: r#"{"error":"a decision model has no chat route"}"#.to_owned(),
+            decision: decision.into(),
+            transcription: r#"{"text":""}"#.to_owned(),
+            chat_status: 501,
+            decision_status: 200,
             chat_delay: Duration::ZERO,
         }
     }
@@ -111,6 +131,12 @@ impl FakeLlamaServer {
                         });
                         let (status, response_body, delay) = if path.contains("/v1/models") {
                             (200, config.models.clone(), Duration::ZERO)
+                        } else if path.contains("/v1/systemone") {
+                            (
+                                config.decision_status,
+                                config.decision.clone(),
+                                Duration::ZERO,
+                            )
                         } else if path.contains("/v1/audio/transcriptions") {
                             (200, config.transcription.clone(), Duration::ZERO)
                         } else {

@@ -715,6 +715,14 @@ code {
   font-size: 0.8rem;
 }
 
+.todo-check {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--muted, #8b93a1);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
 .todo-done {
   opacity: 0.65;
 }
@@ -759,6 +767,16 @@ code {
   font-size: 0.68rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+.turn-phase {
+  color: var(--muted, #8b93a1);
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.05rem 0.42rem;
 }
 
 .turn-note {

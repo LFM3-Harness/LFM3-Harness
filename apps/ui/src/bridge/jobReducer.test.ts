@@ -56,13 +56,25 @@ describe('jobReducer', () => {
         index: 1,
         note: '',
         calls: [{ tool: 'read_file', arguments: { path: 'notes/a.md' }, ok: true, output: 'hi' }],
-        todos: [{ text: 'read the notes', done: true }],
+        todos: [
+          {
+            text: 'read the notes',
+            done: true,
+            check: { kind: 'file_exists', path: 'notes/a.md' },
+          },
+        ],
       }),
     });
 
     expect(next.turns).toHaveLength(1);
     expect(next.turns[0].calls[0].tool).toBe('read_file');
-    expect(next.todos).toEqual([{ text: 'read the notes', done: true }]);
+    expect(next.todos).toEqual([
+      {
+        text: 'read the notes',
+        done: true,
+        check: { kind: 'file_exists', path: 'notes/a.md', contains: null },
+      },
+    ]);
     expect(next.lastSeq).toBe(2);
   });
 

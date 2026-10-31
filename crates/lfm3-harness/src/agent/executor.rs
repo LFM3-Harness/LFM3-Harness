@@ -553,7 +553,8 @@ pub(crate) fn tool_definition(tool: ToolName) -> ToolDefinition {
             }),
         ),
         ToolName::Look => (
-            "Ask the vision model about one image in the workspace.",
+            "Ask the vision model one bounded question about one image. Returns measured \
+             file facts plus an observation; it cannot plan or judge.",
             json!({
                 "type": "object",
                 "properties": {
@@ -565,7 +566,8 @@ pub(crate) fn tool_definition(tool: ToolName) -> ToolDefinition {
             }),
         ),
         ToolName::Transcribe => (
-            "Transcribe one audio file in the workspace.",
+            "Transcribe one local recording verbatim. Returns measured file facts plus the \
+             transcript; it cannot summarize or label speakers.",
             json!({
                 "type": "object",
                 "properties": {

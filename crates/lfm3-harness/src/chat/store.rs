@@ -432,16 +432,30 @@ impl ChatStore {
             )));
         }
         let connection = self.lock()?;
-        let changed = connection
-            .execute(
-                "UPDATE chat_actions SET status = ?1, decided_at = ?2 \
-                 WHERE id = ?3 AND status = 'pending'",
-                params![status, now_millis(), action_id],
-            )
-            .map_err(storage_error)?;
+        // An approval decision moves a pending action to approved/denied.
+        // The execution outcome then moves an approved action to
+        // applied/failed. The second transition must not erase the moment the
+        // person decided, so it leaves `decided_at` untouched.
+        let changed = if matches!(status, "applied" | "failed") {
+            connection
+                .execute(
+                    "UPDATE chat_actions SET status = ?1 \
+                     WHERE id = ?2 AND status = 'approved'",
+                    params![status, action_id],
+                )
+                .map_err(storage_error)?
+        } else {
+            connection
+                .execute(
+                    "UPDATE chat_actions SET status = ?1, decided_at = ?2 \
+                     WHERE id = ?3 AND status = 'pending'",
+                    params![status, now_millis(), action_id],
+                )
+                .map_err(storage_error)?
+        };
         if changed == 0 {
             return Err(HarnessError::NotFound(format!(
-                "pending chat action {action_id:?}"
+                "action {action_id:?} cannot move to {status:?}"
             )));
         }
         connection
@@ -580,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_actions_require_a_valid_transition() {
+    fn actions_move_from_pending_through_approval_to_the_outcome() {
         let (store, _directory) = store();
         let session = store.create_session(Some("Files")).expect("session");
         let action = store
@@ -594,11 +608,33 @@ mod tests {
             .expect("action");
         assert_eq!(action.status, "pending");
 
-        let resolved = store
+        let approved = store
+            .resolve_action(&action.id, "approved")
+            .expect("approve");
+        assert_eq!(approved.status, "approved");
+        let decided_at = approved.decided_at;
+        assert!(decided_at.is_some());
+
+        let applied = store
             .resolve_action(&action.id, "applied")
-            .expect("resolve once");
-        assert_eq!(resolved.status, "applied");
+            .expect("record the execution outcome");
+        assert_eq!(applied.status, "applied");
+        assert_eq!(applied.decided_at, decided_at, "approval time is kept");
         assert!(store.resolve_action(&action.id, "denied").is_err());
+    }
+
+    #[test]
+    fn an_unapproved_action_cannot_be_applied() {
+        let (store, _directory) = store();
+        let session = store.create_session(None).expect("session");
+        let action = store
+            .create_action(&session.id, "message", "write_file", json!({}), "Write")
+            .expect("action");
+        assert!(store.resolve_action(&action.id, "applied").is_err());
+        assert_eq!(
+            store.actions(&session.id).expect("actions")[0].status,
+            "pending"
+        );
     }
 
     #[test]

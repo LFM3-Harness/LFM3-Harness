@@ -538,6 +538,45 @@ Spoken replies use `synthesize_speech`. It renders LFM3 speech with `llama-tts -
 
 Chat has no acceptance authority. It never writes to the run journal, never starts a run, and its approvals are scoped to a single file mutation. Any task that needs certified completion must use the verified-task surface.
 
+### 16.2 The stated-job loop and the model envelope
+
+A stated job (`lfm3 job`, the desktop job form, `start_job`) is not a mission: there is no frozen plan or acceptance hash. It is a bounded loop over the same workspace-confined tools, and its shape is derived from the measured strengths and weaknesses of LFM3-1.7B rather than a general-purpose agent default.
+
+`agent::profile::ModelProfile` is the single source of the envelope. `LFM3_TEXT` names the model, both sides of its behavior, written guidance, and hard limits (`max_turns`, `max_calls`, `replay`, `max_output_tokens`, `max_plan_steps`). `loop_options(requested_turns)` clamps a caller's request to the profile, so no surface can ask for more turns than the model can sustain. `/health` reports the same profile.
+
+The loop has three phases. The harness, not the prompt, enforces which tools each phase may execute:
+
+| Phase | Offered tools | Rule |
+|---|---|---|
+| `plan` | `todo_write` | One to eight steps before any workspace action. Empty plans and `finish` are refused. |
+| `work` | Granted workspace tools, then `write_file` only once all sources are read | One bounded action per turn. A `done` claim is accepted only if its deterministic check passes. |
+| `review` | `read_file`, `write_file`, `edit_file`, `finish` | Opens when a non-empty deliverable is written. Re-read the output, repair it, or finish. |
+
+A plan step may carry a check: `file_exists`, `dir_exists`, or `content_matches` with a non-empty `contains`. Checks are evaluated against the real workspace with the same workspace-confinement rules as tool paths. A failed check demotes the step to open and reports the concrete reason, so the model's "done" is measured rather than asserted. Checks are advisory for progress, never a substitute for the final proof.
+
+Completion is unchanged: `finish` passes only when the required output exists and is non-empty, and the report carries the measured bytes and digest. In the review phase, a first `finish` without a re-read is refused once with a concrete instruction; if the model insists, the measured proof still decides. A stalled review with a valid artifact passes; a job with no plan after three turns, no write after six turns, an expired deadline, or an exhausted turn budget stops with `stalled`, `deadline`, or `turn_budget`, never as a pass.
+
+Job tool grants follow the route. `search_files` and `related_files` are always granted; `look` and `transcribe` only when the route selects `observe` or `hear`. Routing widens capability, never authority; writes still require approval and paths remain confined to the workspace.
+
+The plan phase, the check gate, the write-narrowing rule, and the review turn each compensate for a named weakness (long-horizon planning without externalization, self-certification, drift to sources, and skipping verification), while the bounded call count and strict envelopes use the model's strengths.
+
+### 16.3 One envelope per local model, with a helper for every weakness
+
+The harness addresses four local models, and each is trusted only with what its published evaluation supports. `agent::profile` records all four as `ModelProfile` values; `/health` reports every envelope, including the helpers that cover its weaknesses. Observation and decision models are marked `agentic: false`, and `loop_options` returns a single bounded turn for them, so they can never be handed the planning loop by mistake.
+
+| Model | Used for | Documented weakness | Harness helper |
+|---|---|---|---|
+| LFM3-1.7B | planning, bounded acting, short-extract synthesis | long-horizon planning, unread recall, self-certification, invented figures, failure loops | plan gate, deterministic todo checks, read-before-write guard, review turn, measured digest, advisory grounding note, harness-owned stall budget |
+| LFM3-VL-2B | OCR, documents, charts, GUI screenshots, grounding | no native tool calling, weak coding/multi-turn/non-visual reasoning, cannot judge correctness or know file properties | one bounded instruction per call, observer-only prompt, harness-measured format/bytes/dimensions, and the text model synthesises |
+| LFM3-Audio-2B | verbatim transcription in 18 languages | weak audio understanding and reasoning, no documented speaker ID or timestamps | transcription-only contract, harness-measured container facts and duration when the container exposes it, size cap, text model analyses the transcript |
+| d1-2B | advisory routing and typed decisions | not a chat or knowledge model, uncalibrated confidence, estimated counts, degrades on long input | closed label set, bounded evidence, harness-owned 5,500-bps floor with keyword fallback, never an authority |
+
+Three details carry the design:
+
+- **Sampling follows the model card.** LFM3-1.7B acts at temperature 0.1, top-k 50, repetition penalty 1.1, sent only when set. Observation and decision calls run greedily at temperature 0.
+- **Facts and observations stay separate.** `look` and `transcribe` return a measured `harness facts` line (format, bytes, dimensions; duration and sample rate for WAV) before the model's observation or transcript. The observer is never asked for a file property and never asked to judge.
+- **Grounding is advisory, not a verdict.** During the review turn the harness compares multi-digit numbers in the deliverable with the goal, the plan, and successful observations. Unsourced numbers are listed in the brief so the model can verify or remove them. The check never changes the loop status; the measured deliverable proof remains the only completion authority.
+
 ## 17. Tauri 2 command and event contract
 
 Production uses direct typed commands, not HTTP. Representative commands:

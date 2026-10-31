@@ -1,0 +1,651 @@
+// 50 graded jobs over the corpus in bench/agent50/corpus.
+//
+// Each task is a plain job statement plus content checks that live outside the
+// harness. The harness only proves the deliverable exists, is non-empty, and
+// was re-read; these checks measure whether the content is right.
+
+export const tasks = [
+  // ---------------------------------------------------------------- extract
+  {
+    id: "t01",
+    category: "extract",
+    sources: ["notes/coffee.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/coffee.md and write out/report.md. List the weekly cleaning tasks as Markdown bullets. Use only facts from the file.",
+    checks: {
+      all: [/hopper/i, /cleaning tablet/i, /drip tray/i, /steam wand/i],
+      minWords: 12,
+      maxWords: 160,
+    },
+  },
+  {
+    id: "t02",
+    category: "extract",
+    sources: ["notes/coffee.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/coffee.md and write out/report.md. Describe the monthly cleaning tasks and the safety rule. Use only facts from the file.",
+    checks: {
+      all: [/water filter/i, /brew group/i, /unplug/i],
+      minWords: 10,
+      maxWords: 140,
+    },
+  },
+  {
+    id: "t03",
+    category: "extract",
+    sources: ["notes/greenhouse.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/greenhouse.md and write out/report.md. List the watering interval and amount for tomatoes, basil, and cacti, plus the tank size and refill threshold. Use only facts from the file.",
+    checks: {
+      all: [/1\.5\s*(l|liter)/i, /0\.5\s*(l|liter)/i, /14 days/i, /20\s*(l|liter)/i, /4\s*(l|liter)/i],
+      minWords: 18,
+      maxWords: 180,
+    },
+  },
+  {
+    id: "t04",
+    category: "extract",
+    sources: ["notes/travel.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/travel.md and write out/report.md. List the documents and the electronics to pack. Use only facts from the file.",
+    checks: {
+      all: [/passport/i, /boarding pass/i, /travel insurance/i, /laptop/i, /charger/i, /power adapter/i, /headphones/i],
+      minWords: 15,
+      maxWords: 140,
+    },
+  },
+  {
+    id: "t05",
+    category: "extract",
+    sources: ["notes/onboarding.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/onboarding.md and write out/report.md. List the first-day and week-one tasks, the four accounts, and the IT desk location and opening time. Use only facts from the file.",
+    checks: {
+      all: [/badge/i, /security training/i, /handbook/i, /standup/i, /email/i, /chat/i, /repository/i, /expense/i, /floor 3/i, /08:30/],
+      minWords: 20,
+      maxWords: 200,
+    },
+  },
+  {
+    id: "t06",
+    category: "extract",
+    sources: ["notes/incident.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/incident.md and write out/report.md. State when the incident started, when it was detected, when service was restored, the number of failed checkouts, and whether customer data was lost. Use only facts from the file.",
+    checks: {
+      all: [/14:05/, /14:12/, /14:47/, /1,?240/, /(?:no customer data|customer data[^.\n]{0,30}\bno\b|data (?:was )?not lost)/i],
+      minWords: 15,
+      maxWords: 160,
+    },
+  },
+  {
+    id: "t07",
+    category: "extract",
+    sources: ["docs/policy.md"],
+    deliverable: "out/report.md",
+    goal: "Read docs/policy.md and write out/report.md. List every condition and exception in the refund policy. Use only facts from the file.",
+    checks: {
+      all: [/30 days/, /unused/i, /original packaging/i, /shipping/i, /5 business days/i, /gift card/i],
+      minWords: 18,
+      maxWords: 180,
+    },
+  },
+  {
+    id: "t08",
+    category: "extract",
+    sources: ["docs/recipe.md"],
+    deliverable: "out/report.md",
+    goal: "Read docs/recipe.md and write out/report.md. List every ingredient with its amount. Use only facts from the file.",
+    checks: {
+      all: [/1\s*kg/i, /onion/i, /(?:2\s*garlic|garlic[^.\n]{0,20}\b2\b)/i, /500\s*ml/i, /olive oil/i],
+      minWords: 12,
+      maxWords: 140,
+    },
+  },
+
+  // -------------------------------------------------------------- summarize
+  {
+    id: "t09",
+    category: "summarize",
+    sources: ["notes/coffee.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/coffee.md and write out/report.md. Summarise the routine in three to five sentences, covering both weekly and monthly work and the safety rule. Use only facts from the file.",
+    checks: {
+      all: [/500\s*ml/i, /unplug/i, /water filter/i, /(?:monthly|each month|first monday)/i],
+      minWords: 30,
+      maxWords: 170,
+    },
+  },
+  {
+    id: "t10",
+    category: "summarize",
+    sources: ["notes/incident.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/incident.md and write out/report.md. Summarise the incident in three to five sentences: cause, timeline, impact, and follow-up actions. Use only facts from the file.",
+    checks: {
+      all: [/(?:expired (?:database )?certificate|certificate (?:had )?expired)/i, /1,?240/, /14:47/, /alert|runbook/i],
+      minWords: 30,
+      maxWords: 180,
+    },
+  },
+  {
+    id: "t11",
+    category: "summarize",
+    sources: ["emails/vendor.md"],
+    deliverable: "out/report.md",
+    goal: "Read emails/vendor.md and write out/report.md. Summarise the order in three to five sentences: order id, quantities, delivery, and payment terms. Use only facts from the file.",
+    checks: {
+      all: [/NW-4412/, /(?:60\s*notebooks|notebooks[^.\n]{0,20}\b60\b)/i, /(?:40\s*pens|pens[^.\n]{0,20}\b40\b)/i, /9 December/i, /net 30/i],
+      minWords: 25,
+      maxWords: 160,
+    },
+  },
+  {
+    id: "t12",
+    category: "summarize",
+    sources: ["docs/meeting.md"],
+    deliverable: "out/report.md",
+    goal: "Read docs/meeting.md and write out/report.md. Summarise the decision, the owners, and the open question in three to five sentences. Use only facts from the file.",
+    checks: {
+      all: [/3 November/i, /pricing/i, /Ana/, /Ben/],
+      minWords: 25,
+      maxWords: 160,
+    },
+  },
+  {
+    id: "t13",
+    category: "summarize",
+    sources: ["docs/policy.md"],
+    deliverable: "out/report.md",
+    goal: "Read docs/policy.md and write out/report.md. Summarise the refund rules in three to five sentences, including the time limits and exceptions. Use only facts from the file.",
+    checks: {
+      all: [/30 days/, /5 business days/i, /shipping/i, /gift card/i],
+      minWords: 25,
+      maxWords: 160,
+    },
+  },
+  {
+    id: "t14",
+    category: "summarize",
+    sources: ["notes/onboarding.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/onboarding.md and write out/report.md. Summarise onboarding in three to five sentences: day one, week one, accounts, and the IT desk. Use only facts from the file.",
+    checks: {
+      all: [/badge/i, /security training/i, /standup/i, /floor 3/i],
+      minWords: 25,
+      maxWords: 170,
+    },
+  },
+  {
+    id: "t15",
+    category: "summarize",
+    sources: ["notes/travel.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/travel.md and write out/report.md. Summarise the trip in three to five sentences: departure details, check-in cutoff, and what to pack. Use only facts from the file.",
+    checks: {
+      all: [/07:40/, /terminal 2/i, /45 minutes/i, /passport/i],
+      minWords: 25,
+      maxWords: 170,
+    },
+  },
+  {
+    id: "t16",
+    category: "summarize",
+    sources: ["data/readings.csv"],
+    deliverable: "out/report.md",
+    goal: "Read data/readings.csv and write out/report.md. Summarise the week in three to five sentences, naming the coldest and hottest days with their temperatures. Use only facts from the file.",
+    checks: {
+      all: [/monday/i, /18\b/, /24\b/, /thursday/i],
+      minWords: 25,
+      maxWords: 160,
+    },
+  },
+
+  // ------------------------------------------------------------- structured
+  {
+    id: "t17",
+    category: "structured",
+    sources: ["notes/coffee.md"],
+    deliverable: "out/report.json",
+    goal: "Read notes/coffee.md and write valid JSON to out/report.json with keys weekly (array of weekly task strings), monthly (array of monthly task strings), and safety (string). Use only facts from the file.",
+    checks: {
+      json: [
+        { path: "weekly", contains: ["hopper", "cleaning tablet", "drip tray", "steam wand"] },
+        { path: "monthly", contains: ["water filter", "brew group"] },
+        { path: "safety", contains: "unplug" },
+      ],
+    },
+  },
+  {
+    id: "t18",
+    category: "structured",
+    sources: ["emails/vendor.md"],
+    deliverable: "out/report.json",
+    goal: "Read emails/vendor.md and write valid JSON to out/report.json with keys order_id (string), notebooks (number), pens (number), delivery (string), and payment_terms (string). Use only facts from the file.",
+    checks: {
+      json: [
+        { path: "order_id", equals: "NW-4412" },
+        { path: "notebooks", equals: 60 },
+        { path: "pens", equals: 40 },
+        { path: "delivery", contains: "9 December" },
+        { path: "payment_terms", contains: "net 30" },
+      ],
+    },
+  },
+  {
+    id: "t19",
+    category: "structured",
+    sources: ["notes/incident.md"],
+    deliverable: "out/report.json",
+    goal: "Read notes/incident.md and write valid JSON to out/report.json with keys started, detected, restored (time strings), failed_checkouts (number), data_lost (boolean), and owner (string). Use only facts from the file.",
+    checks: {
+      json: [
+        { path: "started", equals: "14:05" },
+        { path: "detected", equals: "14:12" },
+        { path: "restored", equals: "14:47" },
+        { path: "failed_checkouts", equals: 1240 },
+        { path: "data_lost", equals: false },
+        { path: "owner", equals: "Priya" },
+      ],
+    },
+  },
+  {
+    id: "t20",
+    category: "structured",
+    sources: ["docs/meeting.md"],
+    deliverable: "out/report.json",
+    goal: "Read docs/meeting.md and write valid JSON to out/report.json with keys beta_launch (string), owners (object mapping each of Ana, Ben, Chen, Dana to a due date), and open_question (string). Use only facts from the file.",
+    checks: {
+      json: [
+        { path: "beta_launch", contains: "3 November" },
+        { path: "owners.Ana", contains: "24 October" },
+        { path: "owners.Ben", contains: "20 October" },
+        { path: "owners.Chen", contains: "30 October" },
+        { path: "owners.Dana", contains: "1 November" },
+        { path: "open_question", contains: "pricing" },
+      ],
+    },
+  },
+  {
+    id: "t21",
+    category: "structured",
+    sources: ["notes/greenhouse.md"],
+    deliverable: "out/report.json",
+    goal: "Read notes/greenhouse.md and write valid JSON to out/report.json with keys tomatoes, basil, and cacti. Each is an object with days (number) and liters (number). Use only facts from the file.",
+    checks: {
+      json: [
+        { path: "tomatoes.days", equals: 2 },
+        { path: "tomatoes.liters", equals: 1.5 },
+        { path: "basil.days", equals: 1 },
+        { path: "basil.liters", equals: 0.5 },
+        { path: "cacti.days", equals: 14 },
+        { path: "cacti.liters", equals: 0.2 },
+      ],
+    },
+  },
+  {
+    id: "t22",
+    category: "structured",
+    sources: ["docs/recipe.md"],
+    deliverable: "out/report.json",
+    goal: "Read docs/recipe.md and write valid JSON to out/report.json with keys serves (number), simmer_minutes (number), freeze_months (number), and ingredients (array of strings). Use only facts from the file.",
+    checks: {
+      json: [
+        { path: "serves", equals: 4 },
+        { path: "simmer_minutes", equals: 25 },
+        { path: "freeze_months", equals: 3 },
+        { path: "ingredients", contains: ["tomatoes", "onion", "garlic", "stock", "olive oil"] },
+      ],
+    },
+  },
+  {
+    id: "t23",
+    category: "structured",
+    sources: ["docs/policy.md"],
+    deliverable: "out/report.json",
+    goal: "Read docs/policy.md and write valid JSON to out/report.json with keys refund_days (number), processing_days (number), shipping_refunded (boolean), and gift_cards_refundable (boolean). Use only facts from the file.",
+    checks: {
+      json: [
+        { path: "refund_days", equals: 30 },
+        { path: "processing_days", equals: 5 },
+        { path: "shipping_refunded", equals: false },
+        { path: "gift_cards_refundable", equals: false },
+      ],
+    },
+  },
+  {
+    id: "t24",
+    category: "structured",
+    sources: ["notes/travel.md"],
+    deliverable: "out/report.json",
+    goal: "Read notes/travel.md and write valid JSON to out/report.json with keys departure (string), terminal (number), checkin_minutes (number), and documents (array of strings). Use only facts from the file.",
+    checks: {
+      json: [
+        { path: "departure", contains: "07:40" },
+        { path: "terminal", equals: 2 },
+        { path: "checkin_minutes", equals: 45 },
+        { path: "documents", contains: ["passport", "boarding pass", "travel insurance"] },
+      ],
+    },
+  },
+
+  // ---------------------------------------------------------------- compute
+  {
+    id: "t25",
+    category: "compute",
+    sources: ["data/expenses.csv"],
+    deliverable: "out/report.md",
+    goal: "Read data/expenses.csv and write out/report.md. State the total amount and the number of expense rows. Show the total labelled 'Total'.",
+    checks: {
+      all: [/287\.5(?:0)?\b/, /total/i, /(5|five)\b/i],
+      minWords: 8,
+      maxWords: 120,
+    },
+  },
+  {
+    id: "t26",
+    category: "compute",
+    sources: ["data/expenses.csv"],
+    deliverable: "out/report.md",
+    goal: "Read data/expenses.csv and write out/report.md. Compute the combined cost of the hotel, dinner, and taxi, and show the three amounts.",
+    checks: {
+      all: [/240\.75/, /180/, /36\.75/, /24\.00|24\b/],
+      minWords: 8,
+      maxWords: 120,
+    },
+  },
+  {
+    id: "t27",
+    category: "compute",
+    sources: ["data/inventory.csv"],
+    deliverable: "out/report.md",
+    goal: "Read data/inventory.csv and write out/report.md. State the total stock value, the total number of units, and which item has the largest quantity with that quantity.",
+    checks: {
+      all: [/38\.4(?:0)?\b/, /560/, /240/, /washers/i],
+      minWords: 10,
+      maxWords: 140,
+    },
+  },
+  {
+    id: "t28",
+    category: "compute",
+    sources: ["emails/vendor.md"],
+    deliverable: "out/report.md",
+    goal: "Read emails/vendor.md and write out/report.md. Compute the notebook subtotal, the pen subtotal, and the order total.",
+    checks: {
+      all: [/210/, /48\b/, /258/],
+      minWords: 8,
+      maxWords: 120,
+    },
+  },
+  {
+    id: "t29",
+    category: "compute",
+    sources: ["data/readings.csv"],
+    deliverable: "out/report.md",
+    goal: "Read data/readings.csv and write out/report.md. State the sum of the temperatures, the average temperature, and the highest temperature.",
+    checks: {
+      all: [/104/, /20\.8/, /24\b/],
+      minWords: 8,
+      maxWords: 120,
+    },
+  },
+  {
+    id: "t30",
+    category: "compute",
+    sources: ["notes/coffee.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/coffee.md and write out/report.md. Count the weekly cleaning tasks and the monthly cleaning tasks. Write two labelled lines: 'Weekly: N' and 'Monthly: N'.",
+    checks: {
+      all: [/weekly[^\d]{0,12}4/i, /monthly[^\d]{0,12}2/i],
+      minWords: 4,
+      maxWords: 80,
+    },
+  },
+  {
+    id: "t31",
+    category: "compute",
+    sources: ["notes/incident.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/incident.md and write out/report.md. State, in whole minutes, how long detection took from the start, how long restoration took after detection, and the total from start to restoration. Label each number.",
+    checks: {
+      all: [/detect[^\d]{0,40}7\b/i, /(restor|recover)[^\d]{0,40}35\b/i, /total[^\d]{0,50}42\b/i],
+      minWords: 8,
+      maxWords: 120,
+    },
+  },
+  {
+    id: "t32",
+    category: "compute",
+    sources: ["docs/recipe.md"],
+    deliverable: "out/report.md",
+    goal: "Read docs/recipe.md and write out/report.md. Double the recipe for 8 servings. List the doubled ingredient amounts and keep the simmer time and freezing time.",
+    checks: {
+      all: [/2\s*kg/i, /(1\s*l|1000\s*ml)/i, /(?:4\s*garlic|garlic[^.\n]{0,20}\b4\b)/i, /(?:serves?[^.\n]{0,12}\b8\b|\b8\b servings?)/i, /25 minutes/i],
+      minWords: 12,
+      maxWords: 160,
+    },
+  },
+
+  // --------------------------------------------------------------- synthesis
+  {
+    id: "t33",
+    category: "synthesis",
+    sources: ["docs/policy.md", "emails/vendor.md"],
+    deliverable: "out/report.md",
+    goal: "Read docs/policy.md and emails/vendor.md, then write out/report.md. State the order id, the order total, the refund window, and whether shipping is refunded.",
+    checks: {
+      all: [/NW-4412/, /258/, /30 days/, /shipping/i, /not refunded/i],
+      minWords: 15,
+      maxWords: 160,
+    },
+  },
+  {
+    id: "t34",
+    category: "synthesis",
+    sources: ["docs/meeting.md", "notes/onboarding.md"],
+    deliverable: "out/report.md",
+    goal: "Read docs/meeting.md and notes/onboarding.md, then write out/report.md. State the beta launch date, Ana's onboarding-guide due date, and what new hires must complete in week one.",
+    checks: {
+      all: [/3 November/i, /24 October/i, /security training/i],
+      minWords: 15,
+      maxWords: 150,
+    },
+  },
+  {
+    id: "t35",
+    category: "synthesis",
+    sources: ["notes/coffee.md", "notes/travel.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/coffee.md and notes/travel.md, then write out/report.md. Summarise the coffee machine weekly routine and the flight departure details, including the check-in cutoff.",
+    checks: {
+      all: [/unplug/i, /07:40/, /45 minutes/i],
+      minWords: 18,
+      maxWords: 170,
+    },
+  },
+  {
+    id: "t36",
+    category: "synthesis",
+    sources: ["notes/incident.md", "docs/policy.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/incident.md and docs/policy.md, then write out/report.md. Summarise the incident cause and impact, then state the refund processing time from the policy.",
+    checks: {
+      all: [/certificate/i, /1,?240/, /5 business days/i],
+      minWords: 15,
+      maxWords: 160,
+    },
+  },
+  {
+    id: "t37",
+    category: "synthesis",
+    sources: ["notes/greenhouse.md", "data/readings.csv"],
+    deliverable: "out/report.md",
+    goal: "Read notes/greenhouse.md and data/readings.csv, then write out/report.md. State the hottest day and its temperature, the tomato watering interval, the cactus watering interval, and the tank size.",
+    checks: {
+      all: [/24\b/, /thursday/i, /2 days/i, /14 days/i, /20\s*(l|liter)/i],
+      minWords: 15,
+      maxWords: 170,
+    },
+  },
+  {
+    id: "t38",
+    category: "synthesis",
+    sources: ["docs/recipe.md", "data/expenses.csv"],
+    deliverable: "out/report.md",
+    goal: "Read docs/recipe.md and data/expenses.csv, then write out/report.md. State the dinner expense amount, how many the soup serves, and the simmer time.",
+    checks: {
+      all: [/36\.75/, /(?:serves?[^.\n]{0,12}\b4\b|\b4\b servings?)/i, /25 minutes/i],
+      minWords: 10,
+      maxWords: 130,
+    },
+  },
+  {
+    id: "t39",
+    category: "synthesis",
+    sources: ["data/inventory.csv", "emails/vendor.md"],
+    deliverable: "out/report.md",
+    goal: "Read data/inventory.csv and emails/vendor.md, then write out/report.md. State the vendor order id and order total, and name the inventory item with the largest quantity along with that quantity.",
+    checks: {
+      all: [/NW-4412/, /258/, /washers/i, /240/],
+      minWords: 12,
+      maxWords: 150,
+    },
+  },
+  {
+    id: "t40",
+    category: "synthesis",
+    sources: ["notes/travel.md", "docs/meeting.md"],
+    deliverable: "out/report.md",
+    goal: "Read notes/travel.md and docs/meeting.md, then write out/report.md. State the flight departure time and terminal, the beta launch date, and who owns the onboarding guide.",
+    checks: {
+      all: [/07:40/, /terminal 2/i, /3 November/i, /Ana/],
+      minWords: 12,
+      maxWords: 150,
+    },
+  },
+
+  // ------------------------------------------------------------------ search
+  {
+    id: "t41",
+    category: "search",
+    sources: ["notes/incident.md", "notes/coffee.md", "docs/policy.md", "emails/vendor.md"],
+    deliverable: "out/report.md",
+    goal: "Search the workspace for the file that mentions an expired database certificate. Write out/report.md naming that file and the number of failed checkouts.",
+    checks: {
+      all: [/incident\.md/i, /1,?240/],
+      minWords: 8,
+      maxWords: 100,
+    },
+  },
+  {
+    id: "t42",
+    category: "search",
+    sources: ["emails/vendor.md", "docs/policy.md", "docs/meeting.md", "notes/travel.md"],
+    deliverable: "out/report.md",
+    goal: "Search the workspace for the file that mentions net 30 payment terms. Write out/report.md naming that file and the order id.",
+    checks: {
+      all: [/vendor\.md/i, /NW-4412/],
+      minWords: 8,
+      maxWords: 100,
+    },
+  },
+  {
+    id: "t43",
+    category: "search",
+    sources: ["notes/travel.md", "notes/coffee.md", "docs/recipe.md", "data/expenses.csv"],
+    deliverable: "out/report.md",
+    goal: "Search the workspace for the file that mentions motion sickness tablets. Write out/report.md naming that file and the flight departure time.",
+    checks: {
+      all: [/travel\.md/i, /07:40/],
+      minWords: 8,
+      maxWords: 100,
+    },
+  },
+  {
+    id: "t44",
+    category: "search",
+    sources: ["notes/coffee.md", "notes/greenhouse.md", "docs/policy.md", "docs/recipe.md"],
+    deliverable: "out/report.md",
+    goal: "Search the workspace for the file that mentions the water filter. Write out/report.md naming that file and when the filter is replaced.",
+    checks: {
+      all: [/coffee\.md/i, /(?:first monday|monthly|each month)/i],
+      minWords: 8,
+      maxWords: 100,
+    },
+  },
+  {
+    id: "t45",
+    category: "search",
+    sources: ["docs/meeting.md", "notes/onboarding.md", "docs/policy.md", "notes/incident.md"],
+    deliverable: "out/report.md",
+    goal: "Search the workspace for the file that mentions pricing for the team plan. Write out/report.md naming that file and the beta launch date.",
+    checks: {
+      all: [/meeting\.md/i, /3 November/i],
+      minWords: 8,
+      maxWords: 100,
+    },
+  },
+
+  // ------------------------------------------------------------------ format
+  {
+    id: "t46",
+    category: "format",
+    sources: ["data/expenses.csv"],
+    deliverable: "out/report.md",
+    goal: "Read data/expenses.csv and write out/report.md. Convert the rows into a Markdown table with a header row, and add a final total row.",
+    checks: {
+      all: [/date\s*\|\s*item\s*\|\s*amount/i, /train ticket/i, /hotel/i, /dinner/i, /taxi/i, /coffee/i, /287\.5(?:0)?\b/],
+      minWords: 20,
+      maxWords: 220,
+    },
+  },
+  {
+    id: "t47",
+    category: "format",
+    sources: ["data/inventory.csv"],
+    deliverable: "out/report.md",
+    goal: "Read data/inventory.csv and write out/report.md. Convert the rows into a Markdown table with a header row, and state the total stock value below the table.",
+    checks: {
+      all: [/item\s*\|\s*quantity\s*\|\s*unit[_ ]price/i, /bolts/i, /nuts/i, /washers/i, /screws/i, /38\.4(?:0)?\b/],
+      minWords: 15,
+      maxWords: 200,
+    },
+  },
+  {
+    id: "t48",
+    category: "format",
+    sources: ["data/readings.csv"],
+    deliverable: "out/report.md",
+    goal: "Read data/readings.csv and write out/report.md. Convert the rows into a Markdown table with a header row, then name the hottest day.",
+    checks: {
+      all: [/day\s*\|\s*temperature/i, /monday/i, /tuesday/i, /wednesday/i, /thursday/i, /friday/i, /24\b/],
+      minWords: 15,
+      maxWords: 200,
+    },
+  },
+  {
+    id: "t49",
+    category: "format",
+    sources: ["docs/recipe.md"],
+    deliverable: "out/report.md",
+    goal: "Read docs/recipe.md and write out/report.md. Rewrite the cooking steps as a numbered list, keeping every step, the simmer time, and the serving count.",
+    checks: {
+      all: [/heat[^.\n]{0,20}\bolive oil\b/i, /soften[^.\n]{0,20}\bonion/i, /add[^.\n]{0,20}\bgarlic/i, /add[^.\n]{0,25}\btomatoes/i, /simmer/i, /blend/i, /25 minutes/i, /(?:serves?[^.\n]{0,12}\b4\b|\b4\b servings?)/i],
+      minWords: 20,
+      maxWords: 200,
+    },
+  },
+  {
+    id: "t50",
+    category: "format",
+    sources: ["docs/meeting.md"],
+    deliverable: "out/report.md",
+    goal: "Read docs/meeting.md and write out/report.md. Turn the four action items into a Markdown table with columns for owner and due date, and put the beta launch date below it.",
+    checks: {
+      all: [/ana/i, /24 October/i, /ben/i, /20 October/i, /chen/i, /30 October/i, /dana/i, /1 November/i, /3 November/i],
+      minWords: 15,
+      maxWords: 220,
+    },
+  },
+];

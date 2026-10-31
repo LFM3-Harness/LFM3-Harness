@@ -117,12 +117,23 @@ pub struct JobRecord {
     pub finished_at: Option<i64>,
 }
 
+/// One deterministic check attached to a plan step.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct JobTodoCheck {
+    pub kind: String,
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contains: Option<String>,
+}
+
 /// One item of the acting model's own plan.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct JobTodo {
     pub text: String,
     #[serde(default)]
     pub done: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check: Option<JobTodoCheck>,
 }
 
 /// One tool call inside one turn.
@@ -140,6 +151,9 @@ pub struct JobCall {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct JobTurn {
     pub index: u32,
+    /// plan, work, or review; absent on journals from older engines.
+    #[serde(default)]
+    pub phase: String,
     #[serde(default)]
     pub note: String,
     #[serde(default)]

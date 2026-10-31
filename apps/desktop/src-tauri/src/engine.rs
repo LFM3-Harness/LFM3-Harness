@@ -13,7 +13,9 @@ use std::{
 };
 
 use lfm3_harness::{
-    agent::{plan_request, Budget, Executor, Planner, Runner, SemanticVerifier},
+    agent::{
+        plan_request, Budget, Executor, ModelProfile, Planner, Runner, SemanticVerifier, LFM3_TEXT,
+    },
     mission::{load_missions, InputArtifact, PlanError},
     model::{
         ChatRequest, ChatResponse, Decision, DecisionRequest, LaunchSpec, LlamaClient, ModelFuture,
@@ -216,6 +218,13 @@ impl Engine {
         &self.chat
     }
 
+    /// The shared model manager, for benchmark probes that exercise the real
+    /// router without starting a chat turn.
+    #[must_use]
+    pub fn model_manager(&self) -> Option<&ModelManager> {
+        self.models.as_ref()
+    }
+
     #[must_use]
     pub fn jobs(&self) -> &JobRuntime {
         &self.jobs
@@ -248,6 +257,8 @@ impl Engine {
             },
             "setup": serde_json::to_value(setup::inspect(&self.setup)).unwrap_or(Value::Null),
             "models": self.models(),
+            "model_profile": LFM3_TEXT.report(),
+            "model_profiles": ModelProfile::all_reports(),
             "voice_output": {
                 "available": speech_ready || cfg!(windows),
                 "backend": if speech_ready {
@@ -462,12 +473,14 @@ impl Engine {
         let lease = self.acquire_text(&cancel).await?;
         let gateway: Arc<dyn ModelGateway> = Arc::new(LeaseGateway { lease });
         let mut registry = ToolRegistry::new(&self.workspace)?;
-        for tool in [
-            ToolName::ListFiles,
-            ToolName::ReadFile,
-            ToolName::WriteFile,
-            ToolName::EditFile,
-        ] {
+        // The deterministic route decides which optional observation tools the
+        // job may use. Search and related-file lookup are always available;
+        // `look` and `transcribe` appear only when the route selected their
+        // model, so a job cannot invent a capability the workspace lacks.
+        for tool in route.tools() {
+            let tool = ToolName::parse(&tool).ok_or_else(|| {
+                EngineError::Setup(format!("the route named an unknown tool {tool:?}"))
+            })?;
             registry = registry.grant(tool);
         }
         if let Some(manager) = &self.models {

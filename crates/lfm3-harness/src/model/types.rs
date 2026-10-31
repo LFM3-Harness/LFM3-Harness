@@ -262,6 +262,30 @@ impl ResponseFormat {
     }
 }
 
+/// Decoding settings taken from a model card rather than guessed.
+///
+/// `top_k` and `repetition_penalty` are optional because observation models
+/// run deterministically at temperature zero and do not need them.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Sampling {
+    pub temperature: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repetition_penalty: Option<f32>,
+}
+
+impl Sampling {
+    #[must_use]
+    pub const fn greedy() -> Self {
+        Self {
+            temperature: 0.0,
+            top_k: None,
+            repetition_penalty: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ChatRequest {
     pub messages: Vec<ChatMessage>,
@@ -269,6 +293,10 @@ pub struct ChatRequest {
     pub tools: Vec<ToolDefinition>,
     pub temperature: f32,
     pub max_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repetition_penalty: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -283,9 +311,20 @@ impl ChatRequest {
             tools: Vec::new(),
             temperature: 0.2,
             max_tokens: 1024,
+            top_k: None,
+            repetition_penalty: None,
             tool_choice: None,
             response_format: None,
         }
+    }
+
+    /// Applies one model card's documented decoding settings.
+    #[must_use]
+    pub fn with_sampling(mut self, sampling: Sampling) -> Self {
+        self.temperature = sampling.temperature;
+        self.top_k = sampling.top_k;
+        self.repetition_penalty = sampling.repetition_penalty;
+        self
     }
 
     #[must_use]
@@ -419,7 +458,6 @@ pub struct DecisionRequest {
     pub instruction: String,
     pub evidence: String,
     pub labels: BTreeMap<String, String>,
-    pub max_tokens: u32,
 }
 
 impl DecisionRequest {
@@ -433,7 +471,6 @@ impl DecisionRequest {
             instruction: instruction.into(),
             evidence: evidence.into(),
             labels,
-            max_tokens: 256,
         }
     }
 }

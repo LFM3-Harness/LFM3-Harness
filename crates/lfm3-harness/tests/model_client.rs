@@ -52,7 +52,11 @@ fn tool_request() -> ChatRequest {
             "required": ["path", "content"]
         }),
     )])
-    .with_temperature(0.0)
+    .with_sampling(lfm3_harness::model::Sampling {
+        temperature: 0.1,
+        top_k: Some(50),
+        repetition_penalty: Some(1.1),
+    })
     .with_max_tokens(256)
 }
 
@@ -90,6 +94,9 @@ async fn text_client_preserves_native_tool_calls() {
     let sent: serde_json::Value = serde_json::from_str(&request.body).expect("json body");
     assert_eq!(sent["model"], MODEL);
     assert_eq!(sent["stream"], false);
+    assert_eq!(sent["temperature"], 0.1);
+    assert_eq!(sent["top_k"], 50);
+    assert_eq!(sent["repetition_penalty"], 1.1);
     assert_eq!(sent["tools"][0]["type"], "function");
     assert_eq!(sent["tools"][0]["function"]["name"], "write_file");
     assert_eq!(sent["messages"][0]["role"], "system");
@@ -191,24 +198,25 @@ async fn transcriptions_return_server_text() {
 }
 
 #[tokio::test]
-async fn decisions_must_use_a_declared_label() {
+async fn decisions_use_the_native_systemone_protocol() {
     let labels = labels([
         ("pass", "criterion is visibly satisfied"),
         ("fail", "it is not"),
     ]);
     let valid = json!({
-        "id": "d1",
         "model": "d1-2b",
-        "choices": [{
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": "{\"label\":\"pass\",\"confidence\":0.9,\"rationale\":\"visible button\"}"
+        "answers": {
+            "route": {
+                "type": "choice",
+                "choice": "pass",
+                "probabilities": {"pass": 0.9, "fail": 0.1},
+                "confidence": 0.9
             }
-        }]
+        },
+        "usage": {"input_tokens": 12, "output_tokens": 0}
     })
     .to_string();
-    let server = FakeLlamaServer::start(FakeConfig::chat(&["d1-2b"], valid)).await;
+    let server = FakeLlamaServer::start(FakeConfig::decision(&["d1-2b"], valid)).await;
     let cancel = CancellationContext::new(Duration::from_secs(5));
     let decide = LlamaClient::from_endpoint(server.url(), "d1-2b").unwrap();
     let decision = decide
@@ -220,20 +228,50 @@ async fn decisions_must_use_a_declared_label() {
         .expect("decision");
     assert_eq!(decision.label, "pass");
     assert!((decision.confidence - 0.9).abs() < f64::EPSILON);
+    assert!(decision.rationale.contains("90%"), "{}", decision.rationale);
 
+    let sent = server.requests();
+    let request = sent
+        .iter()
+        .find(|request| request.path.contains("/v1/systemone"))
+        .expect("decision request");
+    assert!(
+        !sent
+            .iter()
+            .any(|request| request.path.contains("/v1/chat/completions")),
+        "a native decision model must not receive a chat request"
+    );
+    let body: serde_json::Value = serde_json::from_str(&request.body).expect("json body");
+    assert_eq!(body["model"], "d1-2b");
+    assert_eq!(body["state"], "screenshot bytes");
+    assert_eq!(body["questions"]["route"]["type"], "choice");
+    assert_eq!(
+        body["questions"]["route"]["criteria"]["pass"],
+        "criterion is visibly satisfied"
+    );
+    assert_eq!(body["questions"]["route"]["criteria"]["fail"], "it is not");
+}
+
+#[tokio::test]
+async fn decisions_must_use_a_declared_label() {
+    let labels = labels([
+        ("pass", "criterion is visibly satisfied"),
+        ("fail", "it is not"),
+    ]);
     let invalid = json!({
-        "id": "d1",
         "model": "d1-2b",
-        "choices": [{
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": "{\"label\":\"maybe\",\"confidence\":0.5}"
+        "answers": {
+            "route": {
+                "type": "choice",
+                "choice": "maybe",
+                "probabilities": {"pass": 0.5, "fail": 0.5},
+                "confidence": 0.5
             }
-        }]
+        }
     })
     .to_string();
-    let server = FakeLlamaServer::start(FakeConfig::chat(&["d1-2b"], invalid)).await;
+    let server = FakeLlamaServer::start(FakeConfig::decision(&["d1-2b"], invalid)).await;
+    let cancel = CancellationContext::new(Duration::from_secs(5));
     let decide = LlamaClient::from_endpoint(server.url(), "d1-2b").unwrap();
     let error = decide
         .decide(
@@ -243,6 +281,25 @@ async fn decisions_must_use_a_declared_label() {
         .await
         .expect_err("undeclared label is a protocol error");
     assert!(matches!(error, ModelError::Protocol(_)), "{error:?}");
+}
+
+#[tokio::test]
+async fn text_models_report_a_missing_decision_route() {
+    let labels = labels([("pass", "it is"), ("fail", "it is not")]);
+    let server = FakeLlamaServer::start(FakeConfig::chat(&["lfm3-1.7b"], text_reply("hi"))).await;
+    let cancel = CancellationContext::new(Duration::from_secs(5));
+    let decide = LlamaClient::from_endpoint(server.url(), "lfm3-1.7b").unwrap();
+    let error = decide
+        .decide(
+            DecisionRequest::new("Is it done?", "evidence", labels),
+            &cancel.child(),
+        )
+        .await
+        .expect_err("a text server has no native decision route");
+    assert!(
+        matches!(error, ModelError::Http { status: 501, .. }),
+        "{error:?}"
+    );
 }
 
 #[tokio::test]
