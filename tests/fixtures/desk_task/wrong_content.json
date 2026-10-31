@@ -1,0 +1,15 @@
+{
+  "goal": "Read notes/handover.md and write a correct summary to out/summary.md. Keep the person, the date, and the item, and do not invent anything the note does not say.",
+  "source": "notes/handover.md",
+  "output": "out/summary.md",
+  "required_terms": ["Mina", "November 12", "lamp"],
+  "forbidden_terms": ["dragon", "teleported"],
+  "files": {
+    "notes/handover.md": "# Handover note\n\nMina replaced the broken desk lamp on November 12. She returned the two\nspare bulbs to the supply cupboard and updated the maintenance log.\n\nThe meeting room projector was not touched.\n"
+  },
+  "expected_summary": "Mina replaced the broken desk lamp on November 12 and returned the spare bulbs to the supply cupboard.\n",
+  "wrong_text": "The office dragon teleported the lamp, so nothing needed repair.\n",
+  "fake": {
+    "write_forbidden": true
+  }
+}

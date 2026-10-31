@@ -1,0 +1,24 @@
+﻿{
+    "case":  "crash",
+    "exit_code":  1,
+    "wall_seconds":  10.94,
+    "peak_memory_kb":  1598616,
+    "status":  "incomplete",
+    "reason":  "no_progress",
+    "attempts":  4,
+    "acceptance_hash":  "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+    "output_sha256":  null,
+    "first_attempt_failed":  true,
+    "step_replanned":  false,
+    "report":  "tests/golden/release/crash.report.json",
+    "report_sha256":  "6a548634f5113868e7552709891b4c4ed85e3126fd5349c08290364dd9348c9c",
+    "events":  "tests/golden/release/crash.events.jsonl",
+    "events_sha256":  "ec4600cf7ff0c0fe55225ecd7e1b3ade72827c9c0116410ce45281c63be89306",
+    "stderr":  "tests/golden/release/crash.stderr.txt",
+    "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "leftover_pids":  [
+
+                      ],
+    "owned_servers_gone":  true,
+    "notes":  "The owned model process is killed during the first attempt; no false pass and nothing survives."
+}

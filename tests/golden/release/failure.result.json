@@ -1,0 +1,24 @@
+﻿{
+    "case":  "failure",
+    "exit_code":  1,
+    "wall_seconds":  15.49,
+    "peak_memory_kb":  1650880,
+    "status":  "incomplete",
+    "reason":  "no_progress",
+    "attempts":  4,
+    "acceptance_hash":  "53a256a521ecd095ab165c74dffdcfab54a5bd319ecf1e7b3c3f42caffe6177e",
+    "output_sha256":  "90b13d095feff174e625031a6859b6c03180a34d0b1f3f9f4ceb944e140c597d",
+    "first_attempt_failed":  true,
+    "step_replanned":  false,
+    "report":  "tests/golden/release/failure.report.json",
+    "report_sha256":  "f9832b456bc1a33eb2e183ce55e0b861d70b3eb85b0d3956f597cf51cfa931c1",
+    "events":  "tests/golden/release/failure.events.jsonl",
+    "events_sha256":  "0423a630b9f298cc36d6fe6a8fe6d59d801bac8009f1dc918ad5fa953145341b",
+    "stderr":  "tests/golden/release/failure.stderr.txt",
+    "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "leftover_pids":  [
+
+                      ],
+    "owned_servers_gone":  true,
+    "notes":  "A required term the source cannot support must exhaust attempts without passing."
+}

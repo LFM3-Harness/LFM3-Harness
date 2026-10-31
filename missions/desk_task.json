@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "name": "desk_task",
+  "version": 1,
+  "title": "Workspace task",
+  "description": "Change approved workspace files and prove every change with a check.",
+  "inputs": {
+    "goal": {
+      "kind": "string",
+      "required": true
+    }
+  },
+  "tools": [
+    "list_files",
+    "read_file",
+    "write_file",
+    "edit_file"
+  ],
+  "checks": [
+    "file_exists",
+    "dir_exists",
+    "content_matches",
+    "content_absent",
+    "json_schema",
+    "numeric_consistency",
+    "report_complete"
+  ],
+  "command_templates": [],
+  "output": {
+    "schema": null,
+    "required_artifacts": [
+      {
+        "path": "out/summary.md",
+        "non_empty": true
+      }
+    ]
+  },
+  "limits": {
+    "max_steps": 8,
+    "max_attempts": 3
+  }
+}

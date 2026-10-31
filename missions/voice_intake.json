@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "name": "voice_intake",
+  "version": 1,
+  "title": "Voice intake",
+  "description": "Turn an imported voice note into schema-valid JSON grounded in the transcript.",
+  "inputs": {
+    "audio": {
+      "kind": "audio",
+      "required": true
+    },
+    "schema": {
+      "kind": "json",
+      "required": true,
+      "schema": {
+        "type": "object"
+      }
+    }
+  },
+  "tools": [
+    "transcribe",
+    "speak",
+    "write_file"
+  ],
+  "checks": [
+    "transcript_nonempty",
+    "json_schema",
+    "d1_grounded",
+    "d1_noul",
+    "file_exists",
+    "report_complete"
+  ],
+  "command_templates": [],
+  "output": {
+    "schema": null,
+    "required_artifacts": []
+  },
+  "limits": {
+    "max_steps": 6,
+    "max_attempts": 3
+  },
+  "semantic": {
+    "mode": "human_review_only",
+    "min_confidence_bps": 8000,
+    "reason": "No packaged holdout qualification has been recorded for this mission, so transcript grounding judgements may inform review but can never pass a run."
+  }
+}

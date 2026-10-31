@@ -1,0 +1,107 @@
+[
+  {
+    "kind": "run.created",
+    "payload": {
+      "acceptance_hash": "<acceptance>",
+      "goal": "Produce the requested note in the workspace",
+      "mission": "runner_fixture",
+      "mission_version": 1
+    }
+  },
+  {
+    "kind": "run.status",
+    "payload": {
+      "from": "created",
+      "reason": null,
+      "status": "running"
+    }
+  },
+  {
+    "kind": "run.planned",
+    "payload": {
+      "steps": [
+        1
+      ]
+    }
+  },
+  {
+    "kind": "attempt.started",
+    "payload": {
+      "action": {
+        "attempt": 1,
+        "phase": "proposed",
+        "step": 1
+      },
+      "attempt": "attempt-0",
+      "step_index": 1,
+      "strategy": 1
+    }
+  },
+  {
+    "kind": "check.result",
+    "payload": {
+      "attempt": "attempt-0",
+      "evidence_count": 1,
+      "kind": "file_exists",
+      "message": "notes.md exists",
+      "sources": [
+        "workspace:notes.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    }
+  },
+  {
+    "kind": "step.passed",
+    "payload": {
+      "attempt": "attempt-0",
+      "error": null,
+      "status": "passed",
+      "step_index": 1
+    }
+  },
+  {
+    "kind": "run.final_verifying",
+    "payload": {
+      "from": "running",
+      "reason": null,
+      "status": "final_verifying"
+    }
+  },
+  {
+    "kind": "check.result",
+    "payload": {
+      "attempt": "attempt-0",
+      "evidence_count": 1,
+      "kind": "file_exists",
+      "message": "notes.md exists",
+      "sources": [
+        "workspace:notes.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    }
+  },
+  {
+    "kind": "check.result",
+    "payload": {
+      "attempt": "attempt-0",
+      "evidence_count": 1,
+      "kind": "file_exists",
+      "message": "notes.md exists",
+      "sources": [
+        "workspace:notes.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    }
+  },
+  {
+    "kind": "run.finished",
+    "payload": {
+      "from": "final_verifying",
+      "reason": null,
+      "status": "passed"
+    }
+  }
+]

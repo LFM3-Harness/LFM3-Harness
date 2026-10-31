@@ -1,0 +1,1 @@
+error: external text endpoint is not ready: model transport failed: error sending request for url (http://127.0.0.1:50936/v1/models)

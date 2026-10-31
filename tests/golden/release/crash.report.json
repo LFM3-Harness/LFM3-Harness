@@ -1,0 +1,134 @@
+{
+  "acceptance_hash": "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+  "checks": [],
+  "database": "C:\\Users\\MY-PC\\AppData\\Local\\Temp\\LFM3 Release Acceptance\\crash.db",
+  "events": 16,
+  "fixture": {
+    "forbidden_terms": [
+      "dragon",
+      "teleported"
+    ],
+    "output": "out/summary.md",
+    "required_terms": [
+      "Mina",
+      "November 12",
+      "lamp"
+    ],
+    "source": "notes/handover.md"
+  },
+  "model": {
+    "identity": "lfm3-1.7b",
+    "launch": {
+      "args": [
+        "-m",
+        "F:\\lfm3\\models\\models--LiquidAI--LFM3-1.7B-GGUF\\snapshots\\bad5729bba61d076fff20d2548e62526665af215\\LFM3-1.7B-Q4_K_M.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080",
+        "--alias",
+        "lfm3-1.7b",
+        "--jinja",
+        "-c",
+        "4096",
+        "-ngl",
+        "0"
+      ],
+      "executable": "F:\\lfm3\\tools\\llama\\llama-server.exe"
+    },
+    "owned": true
+  },
+  "outcome": {
+    "reason": "no_progress",
+    "run_id": "736beefd82dc4a6ca6f042f51d07c97a",
+    "status": "incomplete"
+  },
+  "output": {
+    "expected_sha256": "dfc4c0f26c3fb40bf3905a461264fc38692f62906e4d218efe623867e5054f0e",
+    "matches_expected": false,
+    "observed": null
+  },
+  "reconciled": {
+    "attempts": 0,
+    "runs": 0,
+    "steps": 0
+  },
+  "run": {
+    "acceptance_hash": "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+    "created_at": 1793396603528,
+    "goal": "Read notes/handover.md and write a correct summary to out/summary.md. Keep the person, the date, and the item, and do not invent anything the note does not say.\n\nSource note notes/handover.md:\n# Handover note\n\nMina replaced the broken desk lamp on November 12. She returned the two\nspare bulbs to the supply cupboard and updated the maintenance log.\n\nThe meeting room projector was not touched.",
+    "id": "736beefd82dc4a6ca6f042f51d07c97a",
+    "mission": "desk_task",
+    "mission_version": 1,
+    "parent_run_id": null,
+    "status": "incomplete",
+    "updated_at": 1793396610659
+  },
+  "steps": [
+    {
+      "attempts": [
+        {
+          "action": {
+            "attempt": 1,
+            "phase": "proposed",
+            "step": 1
+          },
+          "error": "model transport failed: error sending request for url (http://127.0.0.1:8080/v1/chat/completions)",
+          "finished_at": 1793396603779,
+          "id": "cbcc8b7c264d43e4800b976786a56cbe",
+          "model": "lfm3-1.7b",
+          "started_at": 1793396603534,
+          "status": "failed",
+          "strategy": 1
+        },
+        {
+          "action": {
+            "attempt": 2,
+            "phase": "proposed",
+            "step": 1
+          },
+          "error": "model transport failed: error sending request for url (http://127.0.0.1:8080/v1/chat/completions)",
+          "finished_at": 1793396605950,
+          "id": "63439560a4cb42ffaf5f4e0b28b4893c",
+          "model": "lfm3-1.7b",
+          "started_at": 1793396603894,
+          "status": "failed",
+          "strategy": 1
+        },
+        {
+          "action": {
+            "attempt": 3,
+            "phase": "proposed",
+            "step": 1
+          },
+          "error": "model transport failed: error sending request for url (http://127.0.0.1:8080/v1/chat/completions)",
+          "finished_at": 1793396608195,
+          "id": "f0bbc43370474dd3a025ccbd16fff438",
+          "model": "lfm3-1.7b",
+          "started_at": 1793396606152,
+          "status": "failed",
+          "strategy": 1
+        },
+        {
+          "action": {
+            "attempt": 4,
+            "phase": "proposed",
+            "step": 1
+          },
+          "error": "model transport failed: error sending request for url (http://127.0.0.1:8080/v1/chat/completions)",
+          "finished_at": 1793396610654,
+          "id": "9e4cd240a0834d5b8039e075f3d62ad6",
+          "model": "lfm3-1.7b",
+          "started_at": 1793396608611,
+          "status": "failed",
+          "strategy": 1
+        }
+      ],
+      "criterion": "The source note notes/handover.md exists and contains the handover details.",
+      "index": 1,
+      "status": "retrying",
+      "title": "Read source note"
+    }
+  ],
+  "workspace": "\\\\?\\C:\\Users\\MY-PC\\AppData\\Local\\Temp\\LFM3 Release Acceptance\\crash"
+}

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "name": "doc_extract",
+  "version": 1,
+  "title": "Document extraction",
+  "description": "Read requested fields from imported document pages and prove each value is grounded.",
+  "inputs": {
+    "image": {
+      "kind": "image",
+      "required": true
+    },
+    "fields": {
+      "kind": "json",
+      "required": true,
+      "schema": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1},
+        "minItems": 1
+      }
+    }
+  },
+  "tools": [
+    "look",
+    "write_file"
+  ],
+  "checks": [
+    "vl_criterion",
+    "d1_grounded",
+    "json_schema",
+    "numeric_consistency",
+    "file_exists",
+    "report_complete"
+  ],
+  "command_templates": [],
+  "output": {
+    "schema": null,
+    "required_artifacts": []
+  },
+  "limits": {
+    "max_steps": 8,
+    "max_attempts": 3
+  },
+  "semantic": {
+    "mode": "human_review_only",
+    "min_confidence_bps": 8000,
+    "reason": "No packaged holdout qualification has been recorded for this mission, so visual and grounding judgements may inform review but can never pass a run."
+  }
+}

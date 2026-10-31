@@ -1,0 +1,33 @@
+{
+  "fixture": "tests/fixtures/desk_task/basic.json",
+  "workspace": "tests/fixtures/desk_task/workspace",
+  "source": "notes/handover.md",
+  "source_sha256": "e719f3dbd5f245e0040006b75049805bb9c1c819b2a9a83b99ab985e3d986758",
+  "output": "out/summary.md",
+  "expected_summary_sha256": "dfc4c0f26c3fb40bf3905a461264fc38692f62906e4d218efe623867e5054f0e",
+  "required_terms": ["Mina", "November 12", "lamp"],
+  "forbidden_terms": ["dragon", "teleported"],
+  "fixture_checks": [
+    {"kind": "file_exists", "path": "out/summary.md"},
+    {"kind": "content_matches", "path": "out/summary.md", "all_of": ["Mina", "November 12", "lamp"]},
+    {"kind": "content_absent", "path": "out/summary.md", "forbidden": ["dragon", "teleported"]}
+  ],
+  "fake_run": {
+    "outcome": "passed",
+    "steps": 1,
+    "attempts_per_step": [1],
+    "checks": 4
+  },
+  "fail_first_write_run": {
+    "outcome": "passed",
+    "steps": 1,
+    "attempts_per_step": [2],
+    "first_failure": "the first write omits Mina and November 12 and names the dragon"
+  },
+  "wrong_content_run": {
+    "outcome": "incomplete",
+    "steps": 1,
+    "attempts_per_step": [3],
+    "never_passes": true
+  }
+}

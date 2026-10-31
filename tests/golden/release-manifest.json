@@ -1,0 +1,482 @@
+{
+  "manifest_version": 1,
+  "release": {
+    "product": "LFM3 Workspace",
+    "version": "0.1.0",
+    "date": "2026-10-31",
+    "platform": "windows-x86_64-msvc",
+    "scope": "Purpose-bound local harness for the desk_task mission; no general chat mode.",
+    "installer": {
+      "path": "target/release/bundle/nsis/LFM3 Workspace_0.1.0_x64-setup.exe",
+      "bytes": 4931480,
+      "sha256": "5e057283da2a756d0db5708ea2cf0eae89c44f2a8cae6130759ac4e65a47eb9f",
+      "utc_modified": "2026-10-30T21:27:46.0619038Z"
+    },
+    "desktop_executable": {
+      "path": "target/release/lfm3-desktop.exe",
+      "sha256": "d55a86446d4fc60d436e263232021e4e03fa330a88dc5a8a7e09d44318951a41"
+    },
+    "installed_executable": {
+      "path": "%LOCALAPPDATA%\\LFM3 Workspace\\lfm3-desktop.exe",
+      "bytes": 19287552,
+      "sha256": "335fb6cdcbc48c4fb20a724b1fb92fd255a51dc25518d88f1907e197c99943e8",
+      "note": "This is the copy the installed smoke acceptance exercised. It has the same size as the target/release copy and differs in three bytes of embedded build metadata."
+    },
+    "cli_executable": {
+      "path": "target/release/lfm3-cli.exe",
+      "sha256": "506795f9d314721171c9f1054b66c3874c91822b25dc87d73b3d79dbcf5c8201"
+    }
+  },
+  "toolchain": {
+    "rust_toolchain_file": "rust-toolchain.toml",
+    "rust_toolchain_sha256": "6d639f6f0a37f0f0f78ba110847a31d2c9699a372dc4fe83d401120a87e5a451",
+    "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
+    "cargo": "1.99.1 (5f94df478 2026-08-27)",
+    "host": "x86_64-pc-windows-msvc",
+    "target": "x86_64-pc-windows-msvc",
+    "cargo_lock": "Cargo.lock",
+    "cargo_lock_sha256": "d8ff98e679a72d7b856f3a17f42bdf1b1f11f2029ab5ddf1846f1832d2ac25b8",
+    "node": "See apps/ui/package-lock.json; UI built with Vite 8 and TypeScript 5.9."
+  },
+  "inference_runtime": {
+    "backend": "llama.cpp",
+    "binary": "tools/llama/llama-server.exe",
+    "binary_sha256": "81f65c6681d66099e5d48757aa2c050ba958dc43816e584f0bb4181eb7c910d8",
+    "version": "0.8.0-dev",
+    "build": 11960,
+    "commit": "8642541b2",
+    "compiler": "Clang 20.1.8",
+    "pinned_probe": "build 11960 / release 0.8.0 must be reported by --version"
+  },
+  "models": [
+    {
+      "role": "text",
+      "path": "models/models--LiquidAI--LFM3-1.7B-GGUF/snapshots/bad5729bba61d076fff20d2548e62526665af215/LFM3-1.7B-Q4_K_M.gguf",
+      "bytes": 1099627808,
+      "sha256": "3793e1e6e2266919d6e015287221b41100175a98eddaba92e111aed3b05c93c4"
+    },
+    {
+      "role": "vision",
+      "path": "models/models--LiquidAI--LFM3-VL-2B-GGUF/snapshots/b36554cfd35854b06429900131730cd80f092cdb/LFM3-VL-2B-QAD-Q4_0.gguf",
+      "bytes": 1049615648,
+      "sha256": "621c455376cb96a20891697deb9975c6fb47dd5ea98ed3ad1f3b7e8f24f0b1e6"
+    },
+    {
+      "role": "vision_projector",
+      "path": "models/models--LiquidAI--LFM3-VL-2B-GGUF/snapshots/b36554cfd35854b06429900131730cd80f092cdb/mmproj-LFM3-VL-2B-Q8_0.gguf",
+      "bytes": 203031872,
+      "sha256": "c5c5b58d544a18da919172d2d0368090ea1a4a351b6feb7f8a326a264a5918ab"
+    },
+    {
+      "role": "audio",
+      "path": "models/LFM3-Audio-2B-GGUF/LFM3-Audio-2B-Q4_K_M.gguf",
+      "bytes": 1099626016,
+      "sha256": "9a773289bd321ed879cd3a76545f6aca506e403851a45fb315420aee45625be2"
+    },
+    {
+      "role": "audio_projector_q4",
+      "path": "models/LFM3-Audio-2B-GGUF/mmproj-LFM3-Audio-2B-Q4_K_M.gguf",
+      "bytes": 172418048,
+      "sha256": "1a3a895160aad17c1f52117a6ee4cea8e68988651ea5a33c5b990539e8eae81d"
+    },
+    {
+      "role": "audio_projector_q8",
+      "path": "models/LFM3-Audio-2B-GGUF/mmproj-LFM3-Audio-2B-Q8_0.gguf",
+      "bytes": 303811840,
+      "sha256": "2b6648b1fd48af16aa0877b0592b144d15070783673e038a379fdbc51d40e365"
+    },
+    {
+      "role": "judge",
+      "path": "models/d1-2B-GGUF/d1-2B-Q4_K_M.gguf",
+      "bytes": 1099629888,
+      "sha256": "adca5789ad30ae6027e8e936749bb9f19673097492ab26fa1c5b69643ca50b4b"
+    }
+  ],
+  "missions": [
+    {
+      "name": "desk_task",
+      "path": "missions/desk_task.json",
+      "sha256": "4b91ab07c36b5cf1f642738056c7507be9a939056e0e5db0a5a692a1d5f282a9",
+      "semantic_policy": "none",
+      "release_status": "autonomous; real-model acceptance passed"
+    },
+    {
+      "name": "doc_extract",
+      "path": "missions/doc_extract.json",
+      "sha256": "39d705d0a4a4f976d92f5aa662a67e13cae2f5876b8008cba3d2e95f193b1653",
+      "semantic_policy": "human_review_only",
+      "release_status": "engine refuses to start"
+    },
+    {
+      "name": "screen_qa",
+      "path": "missions/screen_qa.json",
+      "sha256": "781f3c2230895e6121a8e68ee104f80f1ac3c4a27aae550d53c3d2460582de02",
+      "semantic_policy": "human_review_only",
+      "release_status": "engine refuses to start"
+    },
+    {
+      "name": "voice_intake",
+      "path": "missions/voice_intake.json",
+      "sha256": "2687f2c18d3c6e9fafed654283705d4f4ca18eca2c76e901451ed515198111bd",
+      "semantic_policy": "human_review_only",
+      "release_status": "engine refuses to start"
+    }
+  ],
+  "fixtures": [
+    {
+      "name": "basic",
+      "path": "tests/fixtures/desk_task/basic.json",
+      "sha256": "940296a5d73407d3ce078e6864144fc34aaabd2ee15b41eb3dc90f330b4e4fae"
+    },
+    {
+      "name": "escape_output",
+      "path": "tests/fixtures/desk_task/escape_output.json",
+      "sha256": "f5f896c748b7b176896aaea658d6fe733bf142fa3aeeb9891faee9aa9b5eaec2"
+    },
+    {
+      "name": "fail_first_write",
+      "path": "tests/fixtures/desk_task/fail_first_write.json",
+      "sha256": "fad9747c9c2cb0f0a44e3f95eed6b62928370b1bb6f2d8f4c8b122db5e3ef324"
+    },
+    {
+      "name": "impossible_terms",
+      "path": "tests/fixtures/desk_task/impossible_terms.json",
+      "sha256": "964ebf4455602612fef2b55d58828feff2ea0dfff63a5ef10be81d667f3e66f8"
+    },
+    {
+      "name": "wrong_content",
+      "path": "tests/fixtures/desk_task/wrong_content.json",
+      "sha256": "e9577e9a5efef64a7040b74633e94c2b0c0ec00d25d1323512a0661f62c89663"
+    },
+    {
+      "name": "semantic_holdout_manifest",
+      "path": "tests/fixtures/semantic/holdout/manifest.json",
+      "sha256": "fa568c8e43ca33c3689504cadbb67ce03e18c82dbca9c3fc59d972bc0c541150"
+    },
+    {
+      "name": "semantic_qualification_unperformed",
+      "path": "tests/fixtures/semantic/holdout/qualification.unperformed.json",
+      "sha256": "94ac994c3801690ee21fa7ee44f843383798874eb5c2509ec4e0ef11fa56b246"
+    }
+  ],
+  "acceptance_hashes": {
+    "desk_task_basic": "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+    "desk_task_retry": "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+    "desk_task_impossible_terms": "53a256a521ecd095ab165c74dffdcfab54a5bd319ecf1e7b3c3f42caffe6177e"
+  },
+  "sampling_and_budgets": {
+    "planner": {
+      "temperature": 0.0,
+      "max_tokens": 1536
+    },
+    "executor": {
+      "temperature": 0.1,
+      "max_tokens": 512,
+      "note": "Executor completion cap is its built-in default; limits.max_tokens (default 4096) is parsed and validated but is not applied to executor or planner requests in this release."
+    },
+    "judge": {
+      "temperature": 0.0,
+      "max_tokens_text": 256,
+      "max_tokens_vision_observation": 512,
+      "confidence_threshold_bps": 8000
+    },
+    "limits": {
+      "max_steps": 8,
+      "max_attempts_per_strategy": 3,
+      "max_strategies": 2,
+      "max_total_attempts": 6,
+      "run_timeout_seconds": 900,
+      "shell_timeout_seconds": 120,
+      "context_chars": 18000
+    }
+  },
+  "release_cases": {
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-real-model.ps1",
+    "summary": "tests/golden/release/summary.json",
+    "cases": [
+      {
+        "case": "success",
+        "exit_code": 0,
+        "status": "passed",
+        "reason": null,
+        "attempts": 1,
+        "wall_seconds": 5.99,
+        "peak_memory_kb": 1603924,
+        "acceptance_hash": "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+        "output_sha256": "90b13d095feff174e625031a6859b6c03180a34d0b1f3f9f4ceb944e140c597d",
+        "first_attempt_failed": false,
+        "step_replanned": false,
+        "report": "tests/golden/release/success.report.json",
+        "report_sha256": "5419c5cccdefda368733e391455d717cd3b4d3fc390261a8e813eb24e333c21e",
+        "events": "tests/golden/release/success.events.jsonl",
+        "events_sha256": "e9a3bf54022962237d78fb979a4e2e0c920d4aca79e4c3d0aed307834688613b",
+        "stderr": "tests/golden/release/success.stderr.txt",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "leftover_pids": [],
+        "owned_servers_gone": true,
+        "notes": "Real pinned text model completes the frozen desk_task contract."
+      },
+      {
+        "case": "failure",
+        "exit_code": 1,
+        "status": "incomplete",
+        "reason": "no_progress",
+        "attempts": 4,
+        "wall_seconds": 15.49,
+        "peak_memory_kb": 1650880,
+        "acceptance_hash": "53a256a521ecd095ab165c74dffdcfab54a5bd319ecf1e7b3c3f42caffe6177e",
+        "output_sha256": "90b13d095feff174e625031a6859b6c03180a34d0b1f3f9f4ceb944e140c597d",
+        "first_attempt_failed": true,
+        "step_replanned": false,
+        "report": "tests/golden/release/failure.report.json",
+        "report_sha256": "f9832b456bc1a33eb2e183ce55e0b861d70b3eb85b0d3956f597cf51cfa931c1",
+        "events": "tests/golden/release/failure.events.jsonl",
+        "events_sha256": "0423a630b9f298cc36d6fe6a8fe6d59d801bac8009f1dc918ad5fa953145341b",
+        "stderr": "tests/golden/release/failure.stderr.txt",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "leftover_pids": [],
+        "owned_servers_gone": true,
+        "notes": "A required term the source cannot support exhausts attempts without passing."
+      },
+      {
+        "case": "escape",
+        "exit_code": 1,
+        "status": null,
+        "reason": null,
+        "attempts": null,
+        "wall_seconds": 0.25,
+        "peak_memory_kb": 0,
+        "acceptance_hash": null,
+        "output_sha256": null,
+        "first_attempt_failed": null,
+        "step_replanned": null,
+        "report": "tests/golden/release/escape.report.json",
+        "report_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "events": null,
+        "events_sha256": null,
+        "stderr": "tests/golden/release/escape.stderr.txt",
+        "stderr_sha256": "733715a8965457ba5d7829cada00838975ce43a3219eafb4157bf587ff8a6c20",
+        "leftover_pids": [],
+        "owned_servers_gone": true,
+        "notes": "An output path outside the workspace is rejected before planning; no report or journal is produced."
+      },
+      {
+        "case": "retry",
+        "exit_code": 0,
+        "status": "passed",
+        "reason": null,
+        "attempts": 2,
+        "wall_seconds": 8.65,
+        "peak_memory_kb": 1603060,
+        "acceptance_hash": "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+        "output_sha256": "9cc3066df6f1555067c61113b58c874caad19e3aaf0a47e3b690b82705e42397",
+        "first_attempt_failed": true,
+        "step_replanned": false,
+        "report": "tests/golden/release/retry.report.json",
+        "report_sha256": "2599027dfb4acfaf7c3e216baa56686fc6c2ec8990f1cd3ba9d1ec658c4fc4eb",
+        "events": "tests/golden/release/retry.events.jsonl",
+        "events_sha256": "a49b9b5902855786a5da81e870b3814b86b51744c7500e712952276f9d705df0",
+        "stderr": "tests/golden/release/retry.stderr.txt",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "leftover_pids": [],
+        "owned_servers_gone": true,
+        "notes": "An ACL deny on out/ makes the first write fail; lifting it after step.failed lets the next attempt pass."
+      },
+      {
+        "case": "crash",
+        "exit_code": 1,
+        "status": "incomplete",
+        "reason": "no_progress",
+        "attempts": 4,
+        "wall_seconds": 10.94,
+        "peak_memory_kb": 1598616,
+        "acceptance_hash": "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+        "output_sha256": null,
+        "first_attempt_failed": true,
+        "step_replanned": false,
+        "report": "tests/golden/release/crash.report.json",
+        "report_sha256": "6a548634f5113868e7552709891b4c4ed85e3126fd5349c08290364dd9348c9c",
+        "events": "tests/golden/release/crash.events.jsonl",
+        "events_sha256": "ec4600cf7ff0c0fe55225ecd7e1b3ade72827c9c0116410ce45281c63be89306",
+        "stderr": "tests/golden/release/crash.stderr.txt",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "leftover_pids": [],
+        "owned_servers_gone": true,
+        "notes": "The owned model process is killed after attempt.started; no false pass and nothing survives."
+      },
+      {
+        "case": "unavailable",
+        "exit_code": 1,
+        "status": null,
+        "reason": null,
+        "attempts": null,
+        "wall_seconds": 2.27,
+        "peak_memory_kb": 0,
+        "acceptance_hash": null,
+        "output_sha256": null,
+        "first_attempt_failed": null,
+        "step_replanned": null,
+        "report": "tests/golden/release/unavailable.report.json",
+        "report_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "events": null,
+        "events_sha256": null,
+        "stderr": "tests/golden/release/unavailable.stderr.txt",
+        "stderr_sha256": "0777ab3ff9d427173ab6bb8f6299ecac2a08286a3043c83b26d321a2c6f6880b",
+        "leftover_pids": [],
+        "owned_servers_gone": true,
+        "notes": "An unreachable external loopback endpoint fails instead of starting an owned server."
+      },
+      {
+        "case": "timeout",
+        "exit_code": 1,
+        "status": null,
+        "reason": null,
+        "attempts": null,
+        "wall_seconds": 2.46,
+        "peak_memory_kb": 1581780,
+        "acceptance_hash": null,
+        "output_sha256": null,
+        "first_attempt_failed": null,
+        "step_replanned": null,
+        "report": "tests/golden/release/timeout.report.json",
+        "report_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "events": null,
+        "events_sha256": null,
+        "stderr": "tests/golden/release/timeout.stderr.txt",
+        "stderr_sha256": "29e8d8471a87c4b942812ec6c1183a7a52aedced08e44b5a8f41d8df48b9f13c",
+        "leftover_pids": [],
+        "owned_servers_gone": true,
+        "notes": "A one-second whole-run deadline cancels the run and terminates the owned server."
+      },
+      {
+        "case": "missing",
+        "exit_code": 1,
+        "status": null,
+        "reason": null,
+        "attempts": null,
+        "wall_seconds": 0.25,
+        "peak_memory_kb": 0,
+        "acceptance_hash": null,
+        "output_sha256": null,
+        "first_attempt_failed": null,
+        "step_replanned": null,
+        "report": "tests/golden/release/missing.report.json",
+        "report_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "events": null,
+        "events_sha256": null,
+        "stderr": "tests/golden/release/missing.stderr.txt",
+        "stderr_sha256": "7570a5c4527a7b7295e68117aae20ed869987ba9c996ceb915d3de5359ee68d2",
+        "doctor": "tests/golden/release/missing.doctor.json",
+        "doctor_sha256": "9904ca2093030cce35267f3c88c02ef6cabdfa0ac830b5a69196bf3ffe3b7bf2",
+        "leftover_pids": [],
+        "owned_servers_gone": true,
+        "notes": "An empty models directory fails without downloading or spawning a server."
+      }
+    ]
+  },
+  "gates": {
+    "full_release_acceptance": {
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/accept.ps1",
+      "total_seconds": 170.0,
+      "result": "passed",
+      "steps": [
+        "cargo fmt --check",
+        "cargo clippy with warnings denied",
+        "cargo test --workspace",
+        "no Python project files",
+        "UI typecheck",
+        "UI unit tests: 34 passed",
+        "Playwright end-to-end: 8 passed",
+        "Tauri NSIS build",
+        "installed smoke acceptance (scripts/smoke.ps1)"
+      ]
+    },
+    "final_static_ui_rerun": {
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/accept.ps1 -SkipBuild -SkipSmoke",
+      "total_seconds": 29.2,
+      "result": "passed",
+      "timings_seconds": {
+        "cargo_fmt_check": 0.3,
+        "cargo_clippy": 0.5,
+        "cargo_test_workspace": 11.7,
+        "no_python_project_files": 4.1,
+        "ui_typecheck": 1.4,
+        "ui_unit_tests": 1.9,
+        "playwright_e2e": 9.2
+      },
+      "note": "Run after the acceptance evidence was produced; the installer was intentionally not rebuilt so the recorded installer hash stays valid."
+    },
+    "installed_smoke": {
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1",
+      "phases": [
+        "--smoke: real desk_task start, overlapping start refused, cancel, second start/cancel, model release",
+        "--smoke-close: run interrupted by engine close; next boot reports interrupted with no active run",
+        "--smoke-hold: forced process termination takes the owned llama-server with the job",
+        "external llama-server survives every phase",
+        "packaged missions resource, install path with a space, no Python source in the installed tree"
+      ],
+      "result": "passed"
+    }
+  },
+  "verification_coverage": {
+    "deterministic_success_and_failure": "release case success and failure",
+    "genuine_retry_recovery": "release case retry (attempt 1 failed, attempt 2 passed)",
+    "impossible_goals_and_no_progress": "release case failure",
+    "model_crash": "release case crash",
+    "active_cancellation": "release case timeout plus installed smoke cancellation phases",
+    "process_cleanup": "every release case plus installed smoke --smoke-hold",
+    "interruption_recovery": "installed smoke --smoke-close (packaged engine close) and the CLI interruption gate recorded in tests/golden/desk_task",
+    "concurrent_start_refusal": "installed smoke --smoke (overlapping start is refused)",
+    "missing_weights": "release case missing",
+    "immutable_replanning": "covered by automated tests only: crates/lfm3-harness/tests/recovery.rs (replanning_switches_strategy_and_passes, a_replan_that_changes_the_acceptance_never_passes, accept_strategy_keeps_the_frozen_contract_and_spends_one_slot) and crates/lfm3-harness/tests/executor.rs (a_replan_with_the_frozen_hash_is_accepted, a_replan_that_changes_the_frozen_hash_is_invalid). Not triggered in the real-model release cases."
+  },
+  "semantic_qualification": {
+    "performed": false,
+    "reason": "No frozen holdout run has been evaluated with the real models.",
+    "holdout_manifest_sha256": "fa568c8e43ca33c3689504cadbb67ce03e18c82dbca9c3fc59d972bc0c541150",
+    "qualification_runs": 0,
+    "false_completions": 0,
+    "automatic_passing": "disabled",
+    "packaged_semantic_missions": {
+      "screen_qa": "human_review_only",
+      "voice_intake": "human_review_only",
+      "doc_extract": "human_review_only"
+    },
+    "engine_behavior": "Refuses to start a human-review-only semantic mission; the UI shows the badge and disables Start."
+  },
+  "scope_audit": {
+    "python_source_files": 0,
+    "python_project_files": 0,
+    "python_caches": 0,
+    "python_launch_commands": 0,
+    "installed_tree": {
+      "files": [
+        "lfm3-desktop.exe",
+        "missions/desk_task.json",
+        "missions/doc_extract.json",
+        "missions/screen_qa.json",
+        "missions/voice_intake.json",
+        "uninstall.exe"
+      ],
+      "python_files": 0,
+      "installed_mission_hashes_match_source": true
+    },
+    "remote_model_endpoints": "Packaged profile rejects non-loopback endpoints and download flags; tests/config.rs covers both. Only loopback URLs appear in runtime code.",
+    "arbitrary_shell": "No Tauri shell plugin; capabilities contain only core:default. Every packaged mission declares an empty command_templates list. The command tool accepts only declared templates, and file tools resolve through the workspace-confined registry.",
+    "process_spawns": [
+      "pinned llama-server.exe and llama-tts.exe",
+      "read-only llama-server --version probe",
+      "debug-only forced-exit job probe (compiled out of release builds)"
+    ],
+    "hidden_downloads": "None. allow_download is rejected in the packaged profile and no download path exists in the harness.",
+    "scripted_production_fallbacks": "The fake-model is behind the lfm3-cli `fake-model` feature and requires explicit --fake-model plus --fixture; the installed desktop app does not include lfm3-cli. DemoBridge is guarded by import.meta.env.DEV and its string is absent from the production bundle.",
+    "production_bundle": "apps/ui/dist contains no DemoBridge symbol and no network calls; the only https string is React's error-documentation text."
+  },
+  "known_limitations": [
+    "Semantic holdout qualification was not performed. All packaged semantic missions remain human_review_only and automatic semantic passing stays disabled.",
+    "Real-model replanning (strategy switch) was not observed in the eight release cases: step_replanned is false everywhere. Replanning is covered by automated recovery and executor tests, not by a packaged real-model run in this release.",
+    "The executor uses its built-in 512-token completion cap. limits.max_tokens (default 4096) is parsed and validated but not applied to executor or planner requests in this release; the planner uses a fixed 1536 tokens.",
+    "Wall times, peak memory, run IDs, and report hashes are specific to this machine and this acceptance run. The NSIS installer is not claimed to be byte-reproducible across rebuilds.",
+    "Only desk_task has an end-to-end autonomous real-model acceptance. The three semantic missions cannot start until a frozen holdout is evaluated with at least three packaged runs and zero confident false completions."
+  ]
+}

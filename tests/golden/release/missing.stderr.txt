@@ -1,0 +1,1 @@
+error: no LFM3-1.7B GGUF under C:\Users\MY-PC\AppData\Local\Temp\LFM3 Release Acceptance\empty-models

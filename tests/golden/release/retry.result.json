@@ -1,0 +1,24 @@
+﻿{
+    "case":  "retry",
+    "exit_code":  0,
+    "wall_seconds":  8.65,
+    "peak_memory_kb":  1603060,
+    "status":  "passed",
+    "reason":  null,
+    "attempts":  2,
+    "acceptance_hash":  "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+    "output_sha256":  "9cc3066df6f1555067c61113b58c874caad19e3aaf0a47e3b690b82705e42397",
+    "first_attempt_failed":  true,
+    "step_replanned":  false,
+    "report":  "tests/golden/release/retry.report.json",
+    "report_sha256":  "2599027dfb4acfaf7c3e216baa56686fc6c2ec8990f1cd3ba9d1ec658c4fc4eb",
+    "events":  "tests/golden/release/retry.events.jsonl",
+    "events_sha256":  "a49b9b5902855786a5da81e870b3814b86b51744c7500e712952276f9d705df0",
+    "stderr":  "tests/golden/release/retry.stderr.txt",
+    "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "leftover_pids":  [
+
+                      ],
+    "owned_servers_gone":  true,
+    "notes":  "Denying file creation makes the first write fail; lifting the deny rule on attempt.failed lets a later attempt pass."
+}

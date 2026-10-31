@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Minimal surface: the app window plus event delivery. No shell, filesystem, or HTTP plugin access.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

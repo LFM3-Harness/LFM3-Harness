@@ -1,0 +1,47 @@
+[
+  {
+    "kind": "run.created",
+    "payload": {
+      "acceptance_hash": "<acceptance>",
+      "goal": "Produce the requested note in the workspace",
+      "mission": "runner_fixture",
+      "mission_version": 1
+    }
+  },
+  {
+    "kind": "run.status",
+    "payload": {
+      "from": "created",
+      "reason": null,
+      "status": "running"
+    }
+  },
+  {
+    "kind": "run.planned",
+    "payload": {
+      "steps": [
+        1
+      ]
+    }
+  },
+  {
+    "kind": "attempt.started",
+    "payload": {
+      "action": {
+        "path": "notes.md",
+        "tool": "write_file"
+      },
+      "attempt": "attempt-0",
+      "step_index": 1,
+      "strategy": 1
+    }
+  },
+  {
+    "kind": "run.interrupted",
+    "payload": {
+      "attempts": 1,
+      "reason": "engine_restarted",
+      "steps": 1
+    }
+  }
+]

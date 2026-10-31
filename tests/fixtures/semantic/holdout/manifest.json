@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "name": "semantic_holdout",
+  "frozen": true,
+  "cases": [
+    {
+      "id": "grounded_transcript",
+      "kind": "d1_grounded",
+      "source": "transcript",
+      "expect": "pass"
+    },
+    {
+      "id": "fabricated_reference",
+      "kind": "d1_grounded",
+      "source": "transcript",
+      "expect": "fail",
+      "note": "The reference ZZ-0000 never occurs in the transcript."
+    },
+    {
+      "id": "omitted_detail",
+      "kind": "d1_noul",
+      "expect": "fail",
+      "note": "A confident summary that omits the caller's name is unsupported."
+    },
+    {
+      "id": "wrong_total",
+      "kind": "numeric_consistency",
+      "expect": "fail",
+      "note": "A judge that calls the report consistent cannot rescue a total that does not equal its parts."
+    },
+    {
+      "id": "ambiguous_visual_claim",
+      "kind": "vl_criterion",
+      "expect": "inconclusive",
+      "note": "A low-confidence or silent visual observation must not pass."
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+[
+  {
+    "kind": "run.created",
+    "payload": {
+      "acceptance_hash": "<acceptance>",
+      "goal": "Produce the requested note in the workspace",
+      "mission": "runner_fixture",
+      "mission_version": 1
+    }
+  },
+  {
+    "kind": "run.status",
+    "payload": {
+      "from": "created",
+      "reason": null,
+      "status": "running"
+    }
+  },
+  {
+    "kind": "run.planned",
+    "payload": {
+      "steps": [
+        1
+      ]
+    }
+  },
+  {
+    "kind": "attempt.started",
+    "payload": {
+      "action": {
+        "attempt": 1,
+        "phase": "proposed",
+        "step": 1
+      },
+      "attempt": "attempt-0",
+      "step_index": 1,
+      "strategy": 1
+    }
+  },
+  {
+    "kind": "step.blocked",
+    "payload": {
+      "attempt": "attempt-0",
+      "error": "cancelled during verification",
+      "status": "aborted",
+      "step_index": 1
+    }
+  },
+  {
+    "kind": "run.finished",
+    "payload": {
+      "from": "running",
+      "reason": "\"cancelled\"",
+      "status": "cancelled"
+    }
+  }
+]

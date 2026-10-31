@@ -1,0 +1,24 @@
+﻿{
+    "case":  "timeout",
+    "exit_code":  1,
+    "wall_seconds":  2.46,
+    "peak_memory_kb":  1581780,
+    "status":  null,
+    "reason":  null,
+    "attempts":  null,
+    "acceptance_hash":  null,
+    "output_sha256":  null,
+    "first_attempt_failed":  null,
+    "step_replanned":  null,
+    "report":  "tests/golden/release/timeout.report.json",
+    "report_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "events":  "tests/golden/release/timeout.events.jsonl",
+    "events_sha256":  null,
+    "stderr":  "tests/golden/release/timeout.stderr.txt",
+    "stderr_sha256":  "29e8d8471a87c4b942812ec6c1183a7a52aedced08e44b5a8f41d8df48b9f13c",
+    "leftover_pids":  [
+
+                      ],
+    "owned_servers_gone":  true,
+    "notes":  "A one-second deadline cancels the run and terminates the owned server."
+}

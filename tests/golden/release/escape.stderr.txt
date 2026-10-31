@@ -1,0 +1,1 @@
+error: fixture path "../escaped.md" must stay inside the workspace

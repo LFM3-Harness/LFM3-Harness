@@ -1,0 +1,48 @@
+# Rust
+/target/
+**/target/
+*.rs.bk
+
+# Node and React
+node_modules/
+**/node_modules/
+dist/
+coverage/
+.vite/
+playwright-report/
+test-results/
+apps/ui/e2e/artifacts/
+
+# Tauri generated state
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/target/
+
+# Local runtime state
+.env
+.lfm3/
+runs/
+*.db
+*.db-shm
+*.db-wal
+
+# Large local assets
+*.gguf
+models/
+tools/llama/*.exe
+tools/llama/*.dll
+
+# Local build and run artifacts
+/tmp/
+*.log
+/desktop-window.png
+
+# Unused legacy helper scripts
+scripts/_*.py
+__pycache__/
+*.pyc
+
+# Editor and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,96 @@
+﻿{
+  "allow_download": false,
+  "data_dir": "C:\\Users\\MY-PC\\AppData\\Local\\Temp\\LFM3 Release Acceptance\\state-missing",
+  "endpoints": {
+    "audio": {
+      "model": "lfm3-audio-2b",
+      "url": "http://127.0.0.1:8082/v1"
+    },
+    "d1": {
+      "model": "d1-2b",
+      "url": "http://127.0.0.1:8083/v1"
+    },
+    "text": {
+      "model": "lfm3-1.7b",
+      "url": "http://127.0.0.1:8080/v1"
+    },
+    "vision": {
+      "model": "lfm3-vl-2b",
+      "url": "http://127.0.0.1:8081/v1"
+    }
+  },
+  "host": {
+    "arch": "x86_64",
+    "os": "windows"
+  },
+  "limits": {
+    "max_attempts_per_strategy": 3,
+    "max_steps": 8,
+    "max_strategies": 2,
+    "max_total_attempts": 6,
+    "run_timeout_seconds": 900
+  },
+  "llama": {
+    "cache": null,
+    "server": "F:\\lfm3\\tools\\llama\\llama-server.exe",
+    "server_exists": true,
+    "tts": null,
+    "tts_exists": false
+  },
+  "local_only": true,
+  "probe": {
+    "endpoints": {
+      "audio": {
+        "available": false,
+        "error": "model call was cancelled: deadline exceeded",
+        "expected": "lfm3-audio-2b",
+        "reachable": false,
+        "url": "http://127.0.0.1:8082/v1"
+      },
+      "d1": {
+        "available": false,
+        "error": "model call was cancelled: deadline exceeded",
+        "expected": "d1-2b",
+        "reachable": false,
+        "url": "http://127.0.0.1:8083/v1"
+      },
+      "text": {
+        "available": false,
+        "error": "model call was cancelled: deadline exceeded",
+        "expected": "lfm3-1.7b",
+        "reachable": false,
+        "url": "http://127.0.0.1:8080/v1"
+      },
+      "vision": {
+        "available": false,
+        "error": "model call was cancelled: deadline exceeded",
+        "expected": "lfm3-vl-2b",
+        "reachable": false,
+        "url": "http://127.0.0.1:8081/v1"
+      }
+    },
+    "ready": false,
+    "runtime": {
+      "build": 11960,
+      "expected": "b11960 / v0.8.0",
+      "path": "F:\\lfm3\\tools\\llama\\llama-server.exe",
+      "pinned": true,
+      "release": "0.8.0-dev",
+      "version": "version: 0.8.0-dev (build 11960, commit 8642541b2)"
+    },
+    "setup": [
+      "text (lfm3-1.7b): provision the LFM3-1.7B GGUF under C:\\Users\\MY-PC\\AppData\\Local\\Temp\\LFM3 Release Acceptance\\empty-models and start llama-server, or point LFM3_TEXT_URL at an already-running local server; this harness never downloads weights.",
+      "vision (lfm3-vl-2b): provision the LFM3-VL-2B GGUF under C:\\Users\\MY-PC\\AppData\\Local\\Temp\\LFM3 Release Acceptance\\empty-models and start llama-server, or point LFM3_VISION_URL at an already-running local server; this harness never downloads weights.",
+      "audio (lfm3-audio-2b): provision the LFM3-Audio-2B GGUF under C:\\Users\\MY-PC\\AppData\\Local\\Temp\\LFM3 Release Acceptance\\empty-models and start llama-server, or point LFM3_AUDIO_URL at an already-running local server; this harness never downloads weights.",
+      "d1 (d1-2b): provision the d1-2B GGUF under C:\\Users\\MY-PC\\AppData\\Local\\Temp\\LFM3 Release Acceptance\\empty-models and start llama-server, or point LFM3_D1_URL at an already-running local server; this harness never downloads weights."
+    ],
+    "weights": [],
+    "weights_root": "C:\\Users\\MY-PC\\AppData\\Local\\Temp\\LFM3 Release Acceptance\\empty-models"
+  },
+  "profile": "cpu",
+  "reuse_external_servers": false,
+  "runtime": "rust",
+  "service": "lfm3-harness",
+  "version": "0.1.0",
+  "workspace": null
+}

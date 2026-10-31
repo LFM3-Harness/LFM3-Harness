@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "name": "screen_qa",
+  "version": 1,
+  "title": "Screenshot QA",
+  "description": "Check an imported screenshot against written criteria and cite visible evidence.",
+  "inputs": {
+    "image": {
+      "kind": "image",
+      "required": true
+    },
+    "spec": {
+      "kind": "string",
+      "required": true
+    }
+  },
+  "tools": [
+    "look",
+    "write_file"
+  ],
+  "checks": [
+    "vl_criterion",
+    "d1_choice",
+    "d1_noul",
+    "report_complete",
+    "file_exists",
+    "json_schema"
+  ],
+  "command_templates": [],
+  "output": {
+    "schema": null,
+    "required_artifacts": []
+  },
+  "limits": {
+    "max_steps": 8,
+    "max_attempts": 3
+  },
+  "semantic": {
+    "mode": "human_review_only",
+    "min_confidence_bps": 8000,
+    "reason": "No packaged holdout qualification has been recorded for this mission, so a visual or d1 judgement may inform review but can never pass a run."
+  }
+}

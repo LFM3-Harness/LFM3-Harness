@@ -1,0 +1,24 @@
+﻿{
+    "case":  "success",
+    "exit_code":  0,
+    "wall_seconds":  5.99,
+    "peak_memory_kb":  1603924,
+    "status":  "passed",
+    "reason":  null,
+    "attempts":  1,
+    "acceptance_hash":  "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+    "output_sha256":  "90b13d095feff174e625031a6859b6c03180a34d0b1f3f9f4ceb944e140c597d",
+    "first_attempt_failed":  false,
+    "step_replanned":  false,
+    "report":  "tests/golden/release/success.report.json",
+    "report_sha256":  "5419c5cccdefda368733e391455d717cd3b4d3fc390261a8e813eb24e333c21e",
+    "events":  "tests/golden/release/success.events.jsonl",
+    "events_sha256":  "e9a3bf54022962237d78fb979a4e2e0c920d4aca79e4c3d0aed307834688613b",
+    "stderr":  "tests/golden/release/success.stderr.txt",
+    "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "leftover_pids":  [
+
+                      ],
+    "owned_servers_gone":  true,
+    "notes":  "Real pinned text model completes the frozen desk_task contract."
+}

@@ -1,0 +1,199 @@
+{
+  "acceptance_hash": "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+  "checks": [
+    {
+      "attempt": "d80d58a2d7444e56905d995eb01eafbe",
+      "evidence_count": 1,
+      "kind": "file_exists",
+      "message": "notes/handover.md exists",
+      "sources": [
+        "workspace:notes/handover.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    },
+    {
+      "attempt": "d80d58a2d7444e56905d995eb01eafbe",
+      "evidence_count": 1,
+      "kind": "file_exists",
+      "message": "out/summary.md exists",
+      "sources": [
+        "workspace:out/summary.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    },
+    {
+      "attempt": "d80d58a2d7444e56905d995eb01eafbe",
+      "evidence_count": 1,
+      "kind": "content_matches",
+      "message": "out/summary.md matches every required condition",
+      "sources": [
+        "workspace:out/summary.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    },
+    {
+      "attempt": "d80d58a2d7444e56905d995eb01eafbe",
+      "evidence_count": 1,
+      "kind": "content_absent",
+      "message": "out/summary.md contains none of the forbidden terms",
+      "sources": [
+        "workspace:out/summary.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    },
+    {
+      "attempt": "d80d58a2d7444e56905d995eb01eafbe",
+      "evidence_count": 1,
+      "kind": "file_exists",
+      "message": "out/summary.md exists",
+      "sources": [
+        "workspace:out/summary.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    },
+    {
+      "attempt": "d80d58a2d7444e56905d995eb01eafbe",
+      "evidence_count": 1,
+      "kind": "file_exists",
+      "message": "notes/handover.md exists",
+      "sources": [
+        "workspace:notes/handover.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    },
+    {
+      "attempt": "d80d58a2d7444e56905d995eb01eafbe",
+      "evidence_count": 1,
+      "kind": "file_exists",
+      "message": "out/summary.md exists",
+      "sources": [
+        "workspace:out/summary.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    },
+    {
+      "attempt": "d80d58a2d7444e56905d995eb01eafbe",
+      "evidence_count": 1,
+      "kind": "content_matches",
+      "message": "out/summary.md matches every required condition",
+      "sources": [
+        "workspace:out/summary.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    },
+    {
+      "attempt": "d80d58a2d7444e56905d995eb01eafbe",
+      "evidence_count": 1,
+      "kind": "content_absent",
+      "message": "out/summary.md contains none of the forbidden terms",
+      "sources": [
+        "workspace:out/summary.md"
+      ],
+      "status": "pass",
+      "step_index": 1
+    }
+  ],
+  "database": "C:\\Users\\MY-PC\\AppData\\Local\\Temp\\LFM3 Release Acceptance\\success.db",
+  "events": 17,
+  "fixture": {
+    "forbidden_terms": [
+      "dragon",
+      "teleported"
+    ],
+    "output": "out/summary.md",
+    "required_terms": [
+      "Mina",
+      "November 12",
+      "lamp"
+    ],
+    "source": "notes/handover.md"
+  },
+  "model": {
+    "identity": "lfm3-1.7b",
+    "launch": {
+      "args": [
+        "-m",
+        "F:\\lfm3\\models\\models--LiquidAI--LFM3-1.7B-GGUF\\snapshots\\bad5729bba61d076fff20d2548e62526665af215\\LFM3-1.7B-Q4_K_M.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080",
+        "--alias",
+        "lfm3-1.7b",
+        "--jinja",
+        "-c",
+        "4096",
+        "-ngl",
+        "0"
+      ],
+      "executable": "F:\\lfm3\\tools\\llama\\llama-server.exe"
+    },
+    "owned": true
+  },
+  "outcome": {
+    "reason": null,
+    "run_id": "9dee7540cf194dedb57302ee30c1f501",
+    "status": "passed"
+  },
+  "output": {
+    "expected_sha256": "dfc4c0f26c3fb40bf3905a461264fc38692f62906e4d218efe623867e5054f0e",
+    "matches_expected": false,
+    "observed": {
+      "bytes": 222,
+      "path": "out/summary.md",
+      "sha256": "90b13d095feff174e625031a6859b6c03180a34d0b1f3f9f4ceb944e140c597d"
+    }
+  },
+  "reconciled": {
+    "attempts": 0,
+    "runs": 0,
+    "steps": 0
+  },
+  "run": {
+    "acceptance_hash": "f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5",
+    "created_at": 1793396572448,
+    "goal": "Read notes/handover.md and write a correct summary to out/summary.md. Keep the person, the date, and the item, and do not invent anything the note does not say.\n\nSource note notes/handover.md:\n# Handover note\n\nMina replaced the broken desk lamp on November 12. She returned the two\nspare bulbs to the supply cupboard and updated the maintenance log.\n\nThe meeting room projector was not touched.",
+    "id": "9dee7540cf194dedb57302ee30c1f501",
+    "mission": "desk_task",
+    "mission_version": 1,
+    "parent_run_id": null,
+    "status": "passed",
+    "updated_at": 1793396574380
+  },
+  "steps": [
+    {
+      "attempts": [
+        {
+          "action": {
+            "arguments": {
+              "content": "# Summary\n\n**Person:** Mina  \n**Date:** November 12  \n**Item:** Broken desk lamp (replaced by Mina) and two spare bulbs returned to the supply cupboard; maintenance log updated. The meeting room projector was not touched.\n",
+              "path": "out/summary.md"
+            },
+            "call_id": "SqTIJSLrLLzGipGutitA78qHrVyHwfZE",
+            "tool": "write_file"
+          },
+          "error": null,
+          "finished_at": 1793396574376,
+          "id": "d80d58a2d7444e56905d995eb01eafbe",
+          "model": "lfm3-1.7b",
+          "started_at": 1793396572455,
+          "status": "passed",
+          "strategy": 1
+        }
+      ],
+      "criterion": "The source note notes/handover.md exists and contains the handover details.",
+      "index": 1,
+      "status": "passed",
+      "title": "Read source note"
+    }
+  ],
+  "workspace": "\\\\?\\C:\\Users\\MY-PC\\AppData\\Local\\Temp\\LFM3 Release Acceptance\\success"
+}

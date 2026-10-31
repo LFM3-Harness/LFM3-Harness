@@ -1,0 +1,9 @@
+{
+  "goal": "Write a summary outside the workspace to prove the scope guard rejects it.",
+  "source": "notes/handover.md",
+  "output": "../escaped.md",
+  "required_terms": ["Mina"],
+  "files": {
+    "notes/handover.md": "# Handover note\n\nMina replaced the broken desk lamp on November 12.\n"
+  }
+}
