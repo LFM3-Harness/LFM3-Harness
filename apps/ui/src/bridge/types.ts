@@ -319,16 +319,75 @@ export interface RunEvent {
 
 // ------------------------------------------------------------------ health
 
-export type ModelState = 'absent' | 'loading' | 'ready' | 'evicted' | 'error';
+/** `installed` means usable weights are on disk but no server holds them yet. */
+export type ModelState = 'absent' | 'installed' | 'loading' | 'ready' | 'evicted' | 'error';
 
 export interface ModelStatus {
   key: ModelKey;
   model: string;
   url: string;
   state: ModelState;
+  /** Usable weights were found on disk in this installation. */
+  installed?: boolean;
+  /** A local server currently holds the role in memory. */
+  loaded?: boolean;
+  /** The weight file the engine resolved, when one is installed. */
+  path?: string | null;
   memory_bytes: number;
   error: string | null;
 }
+
+/** One pinned weight file in the download catalog. */
+export interface CatalogFile {
+  name: string;
+  bytes: number;
+  sha256: string;
+}
+
+/** One model role the chat menu can offer to download. */
+export interface CatalogModel {
+  key: ModelKey;
+  title: string;
+  repo: string;
+  /** `LiquidAI/<repo>`: the only source the harness contacts. */
+  source: string;
+  license: string;
+  total_bytes: number;
+  files: CatalogFile[];
+  installed: boolean;
+  loaded: boolean;
+  state: 'absent' | 'installed' | 'loaded';
+}
+
+/** What can be downloaded, what is installed, and the live download. */
+export interface ModelCatalog {
+  models_dir: string;
+  /** The role currently downloading, or null. */
+  download: ModelKey | null;
+  /** A finished download waits for an idle turn to be swapped in. */
+  pending_reload: boolean;
+  /** A pinned llama.cpp runtime is present and executable. */
+  runtime_ready: boolean;
+  runtime_note: string | null;
+  models: CatalogModel[];
+}
+
+/** One download watcher frame from `lfm3:download-event`. */
+export type DownloadEvent =
+  | { kind: 'started'; key: ModelKey; total_bytes: number }
+  | {
+      kind: 'progress';
+      key: ModelKey;
+      file: string;
+      received: number;
+      file_total: number;
+      overall_received: number;
+      overall_total: number;
+    }
+  | { kind: 'file_done'; key: ModelKey; file: string }
+  | { kind: 'done'; key: ModelKey }
+  | { kind: 'failed'; key: ModelKey; message: string }
+  | { kind: 'cancelled'; key: ModelKey };
 
 export interface LlamaRuntimeStatus {
   executable: string | null;
@@ -341,6 +400,10 @@ export interface HealthReport {
   version: string;
   local_only: true;
   data_dir: string;
+  /** The folder chat and jobs read and write, as the engine resolved it. */
+  workspace?: string;
+  /** Where the harness looks for GGUF weights. */
+  models_dir?: string;
   llama: LlamaRuntimeStatus;
   models: ModelStatus[];
   /** The local voice used for spoken replies. LFM3-Audio-2B renders the WAV
@@ -418,6 +481,7 @@ export type ChatEvent =
   | { session_id: string; kind: 'assistant_delta'; message_id: string; delta: string }
   | { session_id: string; kind: 'assistant_done'; message: ChatMessageRecord }
   | { session_id: string; kind: 'route'; route: ChatRoute }
+  | { session_id: string; kind: 'decision'; decision: HarnessDecision }
   | { session_id: string; kind: 'action_requested'; action: ChatActionRecord }
   | { session_id: string; kind: 'action_resolved'; action: ChatActionRecord }
   | { session_id: string; kind: 'tool_result'; message: ChatMessageRecord }
@@ -449,6 +513,29 @@ export interface ChatRoute {
   reason: string;
   model: string | null;
   roles: ChatRouteRole[];
+}
+
+/** Where inside a turn the decision model was consulted. */
+export type DecisionPoint = 'write_gate' | 'evidence_gate';
+
+/** What the harness did with the decision; the harness owns every floor. */
+export type DecisionOutcome = 'allow' | 'hold' | 'advise' | 'inconclusive';
+
+/**
+ * One typed answer from the local decision model. A `hold` only keeps a
+ * mismatched write away from the approval card; it never grants or replaces
+ * the person's consent. `advise` adds a note the acting model can use.
+ */
+export interface HarnessDecision {
+  point: DecisionPoint;
+  label: string;
+  confidence_bps: number;
+  floor_bps: number;
+  accepted: boolean;
+  outcome: DecisionOutcome;
+  model: string;
+  reason: string;
+  target: string | null;
 }
 
 /** One locally synthesized spoken reply. */

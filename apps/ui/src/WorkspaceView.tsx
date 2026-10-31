@@ -371,8 +371,8 @@ export default function WorkspaceView({ onOpenChat }: { onOpenChat?: () => void 
     <main className="shell">
       <header className="masthead">
         <div>
-          <p className="eyebrow">Local, purpose-bound agent harness</p>
-          <h1>LFM3 Workspace</h1>
+          <p className="eyebrow">Everything stays on this computer</p>
+          <h1>Tasks</h1>
         </div>
         <div className="badges">
           {onOpenChat ? (
@@ -380,16 +380,16 @@ export default function WorkspaceView({ onOpenChat }: { onOpenChat?: () => void 
               Back to chat
             </button>
           ) : null}
-          <span className="badge badge-local">Local only</span>
+          <span className="badge badge-local">On this computer</span>
           {bridge?.kind === 'demo' ? <span className="badge badge-demo">Demo data</span> : null}
         </div>
       </header>
 
       {error ? (
         <section className="panel panel-error" role="alert">
-          <h2>Engine unavailable</h2>
+          <h2>The assistant isn’t running</h2>
           <p>{error}</p>
-          <p className="muted">Start the desktop app to reach the Rust engine.</p>
+          <p className="muted">Open the desktop app to connect to the local engine.</p>
           {import.meta.env.DEV ? (
             <p className="muted">
               In development, append <code>?demo=1</code> to view labelled fixtures.
@@ -407,21 +407,12 @@ export default function WorkspaceView({ onOpenChat }: { onOpenChat?: () => void 
 
       {!loaded && !error ? (
         <section className="panel">
-          <p className="muted">Connecting to the local engine and reading the journal.</p>
+          <p className="muted">Getting things ready…</p>
         </section>
       ) : null}
 
       {loaded ? (
         <>
-          <ModelDock
-            models={loaded.health.models}
-            llama={loaded.health.llama}
-            version={loaded.health.version}
-            dataDir={loaded.health.data_dir}
-            releasing={releasing}
-            onRelease={(key) => void release(key)}
-          />
-
           <TaskComposer
             busy={starting}
             demo={bridge?.kind === 'demo'}
@@ -461,6 +452,15 @@ export default function WorkspaceView({ onOpenChat }: { onOpenChat?: () => void 
             onStart={() => void startRun()}
           />
 
+          <ModelDock
+            models={loaded.health.models}
+            llama={loaded.health.llama}
+            version={loaded.health.version}
+            dataDir={loaded.health.data_dir}
+            releasing={releasing}
+            onRelease={(key) => void release(key)}
+          />
+
           {snapshot ? (
             <>
               {runState.phase === 'recovering' ? (
@@ -495,10 +495,10 @@ export default function WorkspaceView({ onOpenChat }: { onOpenChat?: () => void 
             </>
           ) : (
             <section className="panel">
-              <h2>Run workspace</h2>
+              <h2>Nothing open yet</h2>
               <p className="muted">
-                Start a mission or open a run from history. Every step, retry, and check result
-                is read from the durable journal.
+                Start a task above, or pick one from history. Each step and check is kept here so
+                you can see exactly what happened.
               </p>
             </section>
           )}

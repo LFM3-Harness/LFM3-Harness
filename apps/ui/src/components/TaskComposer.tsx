@@ -26,14 +26,11 @@ export function TaskComposer({ busy = false, demo = false, route, onStart }: Tas
 
   return (
     <section className="panel" aria-labelledby="task-composer-title">
-      <h2 id="task-composer-title">Describe a job</h2>
+      <h2 id="task-composer-title">Start a task</h2>
       <p className="muted">
-        The engine hands the goal to the local text model and lets it work turn by turn. It first
-        writes a short plan with a check per step, then takes one bounded action at a time. A step
-        is only marked done when its check passes against the real workspace; after writing the
-        output the model re-reads it before finishing. It stops when the output is proven, when the
-        budget runs out, or when you stop it. Nothing is pre-approved and nothing is claimed as
-        verified work.
+        Say what you want done. The local model writes a short plan, works one step at a time, and
+        checks the result as it goes. It can only work inside the folder you chose, and you can
+        stop it whenever you like.
       </p>
       <form
         aria-label="General task"
@@ -70,8 +67,8 @@ export function TaskComposer({ busy = false, demo = false, route, onStart }: Tas
             onChange={(event) => setDeliverable(event.target.value)}
           />
           <p className="hint">
-            The job is only passed when this file exists with real bytes; the journal records its
-            size and digest.
+            The task only counts as finished when this file exists and has content. The app records
+            its size and fingerprint.
           </p>
         </div>
         <div className="field">
@@ -84,7 +81,7 @@ export function TaskComposer({ busy = false, demo = false, route, onStart }: Tas
             value={minutes}
             onChange={(event) => setMinutes(event.target.value)}
           />
-          <p className="hint">The job is cancelled when this deadline passes, never marked done.</p>
+          <p className="hint">The task stops when this time runs out; it is never marked done.</p>
         </div>
         <div className="field">
           <label htmlFor="task-turns">Maximum turns</label>
@@ -97,8 +94,7 @@ export function TaskComposer({ busy = false, demo = false, route, onStart }: Tas
             onChange={(event) => setTurns(event.target.value)}
           />
           <p className="hint">
-            Each turn is one model decision with up to three tool calls. The loop stops here even
-            if the output is unfinished.
+            How many steps the model may take. The task stops here even if the output is unfinished.
           </p>
         </div>
         <div className="actions">
@@ -110,13 +106,13 @@ export function TaskComposer({ busy = false, demo = false, route, onStart }: Tas
 
       {demo ? (
         <p className="notice">
-          Demo fixtures describe verified runs only. Start a job in the desktop app.
+          This is demo data. Start a job in the desktop app to run it for real.
         </p>
       ) : null}
 
       {route ? (
         <div aria-label="Model routing">
-          <p className="label">Routed models</p>
+          <p className="label">Models this task will use</p>
           <p className="chips">
             {route.roles.map((entry) => (
               <span

@@ -143,7 +143,7 @@ export function Composer({
         ref={textareaRef}
         value={text}
         rows={3}
-        placeholder="Ask LFM3 to think, read, or edit files in this workspace…"
+        placeholder="Ask anything, or describe what you’d like done…"
         disabled={disabled || transcribing || attaching}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
@@ -178,12 +178,12 @@ export function Composer({
           <button
             type="button"
             className="icon-button attach-button"
-            aria-label="Attach an image for the vision model"
-            title="Attach an image for the vision model"
+            aria-label="Add an image"
+            title="Add an image"
             disabled={running || transcribing || attaching}
             onClick={() => fileRef.current?.click()}
           >
-            +img
+            Image
           </button>
           {recording ? (
             <span className="record-dot" aria-hidden="true" />

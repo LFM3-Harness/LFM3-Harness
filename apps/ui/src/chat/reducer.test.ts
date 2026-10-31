@@ -199,6 +199,53 @@ describe('applyChatEvent', () => {
     state = applyChatEvent(state, { session_id: session.id, kind: 'done' });
     expect(state.route).toBeNull();
   });
+
+  it('keeps the latest gate decision and drops it when the turn ends', () => {
+    let state = applyChatEvent(stateWithView(), {
+      session_id: session.id,
+      kind: 'decision',
+      decision: {
+        point: 'write_gate',
+        label: 'contradicts',
+        confidence_bps: 9_100,
+        floor_bps: 7_500,
+        accepted: true,
+        outcome: 'hold',
+        model: 'lfm3-d1',
+        reason: 'The request asked for a summary, not a rewrite.',
+        target: 'notes.md',
+      },
+    });
+    expect(state.decision?.outcome).toBe('hold');
+    expect(state.decision?.target).toBe('notes.md');
+
+    state = applyChatEvent(state, { session_id: session.id, kind: 'done' });
+    expect(state.decision).toBeNull();
+  });
+
+  it('clears a stale decision when the next user turn starts', () => {
+    const base: ChatUiState = {
+      ...stateWithView(),
+      decision: {
+        point: 'evidence_gate',
+        label: 'insufficient',
+        confidence_bps: 7_000,
+        floor_bps: 6_500,
+        accepted: true,
+        outcome: 'advise',
+        model: 'lfm3-d1',
+        reason: 'Only one file was read.',
+        target: null,
+      },
+    };
+    const user = message({ id: 'user-1', seq: 1, role: 'user', content: 'next', status: 'complete' });
+    const state = applyChatEvent(base, {
+      session_id: session.id,
+      kind: 'user_message',
+      message: user,
+    });
+    expect(state.decision).toBeNull();
+  });
 });
 
 describe('mergeView', () => {

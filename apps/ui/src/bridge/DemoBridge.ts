@@ -1,5 +1,6 @@
 import type {
   ChatEventListener,
+  DownloadEventListener,
   EngineBridge,
   RunEventListener,
   Unsubscribe,
@@ -33,6 +34,7 @@ import type {
   JsonObject,
   JsonValue,
   MissionManifest,
+  ModelCatalog,
   ModelKey,
   ModelStatus,
   RunEvent,
@@ -374,6 +376,30 @@ export class DemoBridge implements EngineBridge {
     return undefined;
   }
 
+  async chooseWorkspace(): Promise<string | null> {
+    throw new Error('Folder selection needs the desktop app; demo data keeps its fixed folder.');
+  }
+
+  async modelCatalog(): Promise<ModelCatalog> {
+    return demoCatalog();
+  }
+
+  async downloadModel(_modelKey: ModelKey): Promise<void> {
+    throw new Error('Demo data cannot download models; run the desktop app.');
+  }
+
+  async cancelDownload(_modelKey: ModelKey): Promise<void> {
+    throw new Error('Demo data has no downloads.');
+  }
+
+  async reloadModels(): Promise<ModelStatus[]> {
+    return MODELS;
+  }
+
+  async subscribeDownloads(_listener: DownloadEventListener): Promise<Unsubscribe> {
+    return () => undefined;
+  }
+
   async chooseInputFiles(_mission: string, _inputKey: string): Promise<string[]> {
     return [];
   }
@@ -672,4 +698,65 @@ function isTerminal(status: RunRecord['status']): boolean {
 
 function isScenario(value: string | null): value is DemoScenario {
   return value === 'workflow' || value === 'deny' || value === 'cancel' || value === 'gap';
+}
+
+/** Deterministic download catalog for the browser demo, derived from MODELS. */
+function demoCatalog(): ModelCatalog {
+  const roles: Array<{ key: ModelKey; title: string; repo: string; files: [string, number][] }> = [
+    {
+      key: 'text',
+      title: 'Text and agent',
+      repo: 'LFM3-1.7B-GGUF',
+      files: [['LFM3-1.7B-Q4_K_M.gguf', 1_099_627_808]],
+    },
+    {
+      key: 'vision',
+      title: 'Vision',
+      repo: 'LFM3-VL-2B-GGUF',
+      files: [
+        ['LFM3-VL-2B-QAD-Q4_0.gguf', 1_049_615_648],
+        ['mmproj-LFM3-VL-2B-Q8_0.gguf', 203_031_872],
+      ],
+    },
+    {
+      key: 'audio',
+      title: 'Voice in and out',
+      repo: 'LFM3-Audio-2B-GGUF',
+      files: [
+        ['LFM3-Audio-2B-Q4_K_M.gguf', 1_099_626_016],
+        ['mmproj-LFM3-Audio-2B-Q8_0.gguf', 303_811_840],
+      ],
+    },
+    {
+      key: 'd1',
+      title: 'Decision',
+      repo: 'd1-2B-GGUF',
+      files: [['d1-2B-Q4_K_M.gguf', 1_099_629_888]],
+    },
+  ];
+  return {
+    models_dir: 'demo://local/models',
+    download: null,
+    pending_reload: false,
+    runtime_ready: true,
+    runtime_note: null,
+    models: roles.map((role) => {
+      const status = MODELS.find((model) => model.key === role.key);
+      const loaded = status?.state === 'ready';
+      const installed = loaded || status?.state === 'installed';
+      const files = role.files.map(([name, bytes]) => ({ name, bytes, sha256: '0'.repeat(64) }));
+      return {
+        key: role.key,
+        title: role.title,
+        repo: role.repo,
+        source: `LiquidAI/${role.repo}`,
+        license: 'LFM Open License (see the model card)',
+        total_bytes: files.reduce((total, file) => total + file.bytes, 0),
+        files,
+        installed,
+        loaded,
+        state: loaded ? 'loaded' : installed ? 'installed' : 'absent',
+      };
+    }),
+  };
 }

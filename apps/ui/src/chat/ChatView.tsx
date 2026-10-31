@@ -2,10 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 
 import { createBridge } from '../bridge/createBridge';
 import type { EngineBridge, Unsubscribe } from '../bridge/EngineBridge';
-import type { ChatEvent, ChatSession, HealthReport } from '../bridge/types';
+import type {
+  ChatEvent,
+  ChatSession,
+  DownloadEvent,
+  HealthReport,
+  ModelCatalog,
+  ModelKey,
+} from '../bridge/types';
+import { ChatModelMenu, type DownloadProgress } from './ChatModelMenu';
 import { ChatSidebar } from './ChatSidebar';
 import { Composer } from './Composer';
 import { MessageBubble } from './MessageBubble';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import {
   applyChatEvent,
   initialChatState,
@@ -13,11 +22,16 @@ import {
   type ChatUiState,
 } from './reducer';
 
+/** Exact logical viewport of a phone-sized chat screen (iPhone 13/14). */
+const PHONE_WIDTH = 390;
+const PHONE_HEIGHT = 844;
+const PHONE_STORAGE_KEY = 'lfm3.phoneView';
+
 const SUGGESTIONS = [
-  'Analyse this folder, find the important files, and tell me what this project does.',
-  'Find files related to a file I name and explain how they connect.',
-  'Read the key files in a folder and write a Markdown report to reports/overview.md.',
-  'Look at a screenshot in this workspace and describe what it shows.',
+  'Summarise what this project does and where I should start.',
+  'Find the file that handles a feature and explain how it works.',
+  'Turn my notes into a clear report I can share.',
+  'Look at an image in this folder and describe what it shows.',
 ];
 
 export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
@@ -33,12 +47,27 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [autoVoice, setAutoVoice] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState<ModelKey | null>(null);
+  const [progress, setProgress] = useState<DownloadProgress | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [switchingFolder, setSwitchingFolder] = useState(false);
+  const [phoneView, setPhoneView] = useState(
+    () => window.localStorage.getItem(PHONE_STORAGE_KEY) === '1',
+  );
+  const [phoneScale, setPhoneScale] = useState(1);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [clock, setClock] = useState(() => formatClock(new Date()));
   const activeRef = useRef<string | null>(null);
   const loadToken = useRef(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const autoVoiceRef = useRef(false);
   const speechToken = useRef(0);
+  /** Guards a slow catalog response from clearing a newer download. */
+  const downloadEpoch = useRef(0);
 
   useEffect(() => {
     const stored = window.localStorage.getItem('lfm3.voiceReplies') === '1';
@@ -137,6 +166,86 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
   }, [bridge]);
 
   useEffect(() => {
+    if (!bridge) {
+      return;
+    }
+    let cancelled = false;
+    let unsubscribe: Unsubscribe | null = null;
+    bridge
+      .subscribeDownloads((event) => {
+        if (!cancelled) {
+          handleDownloadEvent(bridge, event);
+        }
+      })
+      .then((off) => {
+        if (cancelled) {
+          off();
+        } else {
+          unsubscribe = off;
+        }
+      })
+      .catch(() => {
+        // Downloads still work; the catalog shows the final state on refresh.
+      });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bridge]);
+
+  useEffect(() => {
+    if (!menuOpen && !phoneView && !drawerOpen) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+      if (drawerOpen) {
+        setDrawerOpen(false);
+      } else if (menuOpen) {
+        setMenuOpen(false);
+      } else {
+        exitPhoneView();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // exitPhoneView only touches setters and localStorage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuOpen, phoneView, drawerOpen]);
+
+  useEffect(() => {
+    if (!phoneView) {
+      return;
+    }
+    const tick = () => setClock(formatClock(new Date()));
+    tick();
+    const timer = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(timer);
+  }, [phoneView]);
+
+  useEffect(() => {
+    if (!phoneView) {
+      setPhoneScale(1);
+      return;
+    }
+    const updateScale = () => {
+      // Keep the phone at its exact 390x844 logical size; shrink only when the
+      // app window itself is smaller than the frame plus its margin.
+      const fit = Math.min(
+        (window.innerWidth - 32) / PHONE_WIDTH,
+        (window.innerHeight - 32) / PHONE_HEIGHT,
+      );
+      setPhoneScale(Math.max(0.4, Math.min(1, fit)));
+    };
+    updateScale();
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, [phoneView]);
+
+  useEffect(() => {
     const node = scrollRef.current;
     if (node) {
       node.scrollTop = node.scrollHeight;
@@ -188,6 +297,169 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
       setSessions(list);
     } catch {
       // Keep the last known list.
+    }
+  }
+
+  async function refreshHealth(engine: EngineBridge) {
+    try {
+      setHealth(await engine.health());
+    } catch {
+      // Keep the last known report.
+    }
+  }
+
+  async function refreshCatalog(engine: EngineBridge) {
+    const epoch = downloadEpoch.current;
+    setRefreshing(true);
+    try {
+      const next = await engine.modelCatalog();
+      setCatalog(next);
+      if (next.download !== null) {
+        // The menu may open in the middle of a download started earlier.
+        setDownloading((current) => current ?? next.download);
+      } else if (downloadEpoch.current === epoch) {
+        setDownloading(null);
+        setProgress(null);
+      }
+    } catch (cause) {
+      setCatalogError(messageOf(cause));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  function toggleMenu() {
+    const next = !menuOpen;
+    setMenuOpen(next);
+    setCatalogError(null);
+    if (next && bridge) {
+      void refreshCatalog(bridge);
+    }
+  }
+
+  function closeMenu() {
+    setMenuOpen(false);
+  }
+
+  function togglePhoneView() {
+    const next = !phoneView;
+    setPhoneView(next);
+    setDrawerOpen(false);
+    window.localStorage.setItem(PHONE_STORAGE_KEY, next ? '1' : '0');
+    if (next) {
+      setMenuOpen(false);
+    }
+  }
+
+  function exitPhoneView() {
+    setPhoneView(false);
+    setDrawerOpen(false);
+    window.localStorage.setItem(PHONE_STORAGE_KEY, '0');
+  }
+
+  function handleDownloadEvent(engine: EngineBridge, event: DownloadEvent) {
+    if (event.kind === 'started') {
+      downloadEpoch.current += 1;
+      setDownloading(event.key);
+      setProgress({
+        key: event.key,
+        file: '',
+        received: 0,
+        fileTotal: 0,
+        overallReceived: 0,
+        overallTotal: event.total_bytes,
+      });
+      setCatalogError(null);
+      return;
+    }
+    if (event.kind === 'progress') {
+      setProgress({
+        key: event.key,
+        file: event.file,
+        received: event.received,
+        fileTotal: event.file_total,
+        overallReceived: event.overall_received,
+        overallTotal: event.overall_total,
+      });
+      return;
+    }
+    if (event.kind === 'done') {
+      downloadEpoch.current += 1;
+      setDownloading(null);
+      setProgress(null);
+      void refreshCatalog(engine);
+      void refreshHealth(engine);
+      return;
+    }
+    if (event.kind === 'failed') {
+      downloadEpoch.current += 1;
+      setDownloading(null);
+      setProgress(null);
+      setCatalogError(event.message);
+      void refreshCatalog(engine);
+      return;
+    }
+    if (event.kind === 'cancelled') {
+      downloadEpoch.current += 1;
+      setDownloading(null);
+      setProgress(null);
+      void refreshCatalog(engine);
+    }
+  }
+
+  async function startDownload(key: ModelKey) {
+    if (!bridge) {
+      return;
+    }
+    setCatalogError(null);
+    try {
+      await bridge.downloadModel(key);
+    } catch (cause) {
+      setCatalogError(messageOf(cause));
+    }
+  }
+
+  async function stopDownload(key: ModelKey) {
+    if (!bridge) {
+      return;
+    }
+    try {
+      await bridge.cancelDownload(key);
+    } catch (cause) {
+      setCatalogError(messageOf(cause));
+    }
+  }
+
+  async function reloadInstalled() {
+    if (!bridge) {
+      return;
+    }
+    setCatalogError(null);
+    try {
+      const models = await bridge.reloadModels();
+      setHealth((current) => (current ? { ...current, models } : current));
+      await refreshCatalog(bridge);
+    } catch (cause) {
+      setCatalogError(messageOf(cause));
+    }
+  }
+
+  async function pickWorkspace() {
+    if (!bridge) {
+      return;
+    }
+    setSwitchingFolder(true);
+    setError(null);
+    try {
+      const path = await bridge.chooseWorkspace();
+      if (path) {
+        setHealth((current) => (current ? { ...current, workspace: path } : current));
+        await refreshCatalog(bridge);
+      }
+    } catch (cause) {
+      setError(messageOf(cause));
+    } finally {
+      setSwitchingFolder(false);
     }
   }
 
@@ -425,49 +697,220 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
   const running =
     state.running || turnSession !== null || messages.some((message) => message.status === 'streaming');
   const showEmpty = view === null && !loadingView;
-  const hasTextModel = health === null || health.models.some((model) => model.key === 'text');
+  const textModel = health?.models.find((model) => model.key === 'text') ?? null;
+  const hasTextModel =
+    health === null || textModel?.installed === true || textModel?.state === 'ready';
+  const workspaceLabel = health?.workspace ? folderName(health.workspace) : 'Not set';
+  const missingModels =
+    catalog !== null
+      ? catalog.models.filter((model) => !model.installed).length
+      : (health?.models.filter((model) => model.state === 'absent').length ?? 0);
   const voiceOutput = health?.voice_output ?? null;
   const voiceAvailable = voiceOutput?.available ?? false;
   const shownError = error ?? state.error;
+  const workspaceTitle = running
+    ? 'Stop the current reply before changing folders.'
+    : (health?.workspace ?? 'Choose the folder chat and jobs work in');
 
-  return (
+  const modelPicker = (
+    <div className="models-anchor">
+      <button
+        type="button"
+        className={`model-picker ${menuOpen ? 'model-picker-open' : ''}`}
+        aria-haspopup="dialog"
+        aria-expanded={menuOpen}
+        title="Choose or download the local model"
+        onClick={toggleMenu}
+      >
+        <span
+          className={`model-picker-dot model-${textModel?.state ?? 'absent'}`}
+          aria-hidden="true"
+        />
+        <span className="model-picker-name">{textModel?.model ?? 'Local model'}</span>
+        <span className="model-picker-caret" aria-hidden="true">
+          ▾
+        </span>
+        {missingModels > 0 ? (
+          <span className="models-count" aria-label={`${missingModels} not installed`}>
+            {missingModels}
+          </span>
+        ) : null}
+      </button>
+      {menuOpen ? (
+        <>
+          <button
+            type="button"
+            className="model-menu-backdrop"
+            aria-label="Close models"
+            tabIndex={-1}
+            onClick={closeMenu}
+          />
+          <ChatModelMenu
+            catalog={catalog}
+            downloading={downloading}
+            progress={progress}
+            error={catalogError}
+            refreshing={refreshing}
+            busy={running}
+            busyReason="Stop the current reply before downloading or loading models."
+            onRefresh={() => {
+              if (bridge) {
+                void refreshCatalog(bridge);
+              }
+            }}
+            onDownload={(key) => void startDownload(key)}
+            onCancel={(key) => void stopDownload(key)}
+            onReload={() => void reloadInstalled()}
+            onClose={closeMenu}
+          />
+        </>
+      ) : null}
+    </div>
+  );
+
+  const renderSidebar = () => (
+    <ChatSidebar
+      sessions={sessions}
+      activeId={activeId}
+      health={health}
+      workspaceLabel={switchingFolder ? 'Choosing…' : workspaceLabel}
+      workspaceTitle={workspaceTitle}
+      workspaceDisabled={!bridge || switchingFolder || running}
+      workspaceBusy={switchingFolder}
+      onChooseWorkspace={() => void pickWorkspace()}
+      onSelect={(sessionId) => {
+        if (bridge) {
+          void loadSession(bridge, sessionId);
+        }
+        setDrawerOpen(false);
+      }}
+      onNew={() => {
+        newChat();
+        setDrawerOpen(false);
+      }}
+      onRename={(sessionId, title) => void renameSession(sessionId, title)}
+      onDelete={(sessionId) => void removeSession(sessionId)}
+      onOpenTasks={() => {
+        if (phoneView) {
+          exitPhoneView();
+        }
+        onOpenTasks();
+      }}
+    />
+  );
+
+  const shell = (
     <div className="chat-shell">
-      <ChatSidebar
-        sessions={sessions}
-        activeId={activeId}
-        health={health}
-        onSelect={(sessionId) => {
-          if (bridge) {
-            void loadSession(bridge, sessionId);
-          }
-        }}
-        onNew={newChat}
-        onRename={(sessionId, title) => void renameSession(sessionId, title)}
-        onDelete={(sessionId) => void removeSession(sessionId)}
-        onOpenTasks={onOpenTasks}
-      />
+      {phoneView ? null : renderSidebar()}
 
       <main className="chat-main">
+        {phoneView && drawerOpen ? (
+          <>
+            <button
+              type="button"
+              className="phone-drawer-scrim"
+              aria-label="Close conversations"
+              tabIndex={-1}
+              onClick={() => setDrawerOpen(false)}
+            />
+            <aside className="phone-drawer" aria-label="Conversations">
+              {renderSidebar()}
+            </aside>
+          </>
+        ) : null}
+
         <header className="chat-header">
-          <div>
-            <p className="eyebrow">Local cowork harness</p>
-            <h1>{view?.session.title ?? 'New conversation'}</h1>
-          </div>
-          <div className="badges">
-            <span className="badge badge-local">Local only</span>
-            <span className="badge badge-chat">Chat · not verified</span>
-            {voiceAvailable ? (
-              <button
-                type="button"
-                className={`badge badge-voice ${autoVoice ? 'badge-voice-on' : ''}`}
-                aria-pressed={autoVoice}
-                title={voiceOutput?.note ?? 'Read answers aloud with the local voice'}
-                onClick={toggleAutoVoice}
+          {phoneView ? (
+            <div className="phone-header">
+              <div className="phone-statusbar" aria-hidden="true">
+                <span className="phone-clock">{clock}</span>
+                <span className="phone-status-icons">
+                  <SignalIcon />
+                  <WifiIcon />
+                  <BatteryIcon />
+                </span>
+              </div>
+              <div className="phone-appbar">
+                <button
+                  type="button"
+                  className="phone-icon-button"
+                  aria-label="Open conversations"
+                  aria-expanded={drawerOpen}
+                  onClick={() => setDrawerOpen(true)}
+                >
+                  <MenuIcon />
+                </button>
+                <h1>{view?.session.title ?? 'New chat'}</h1>
+                <button
+                  type="button"
+                  className="phone-icon-button"
+                  aria-label="New chat"
+                  onClick={() => {
+                    newChat();
+                    setDrawerOpen(false);
+                  }}
+                >
+                  ＋
+                </button>
+              </div>
+              <div className="phone-tools">
+                {modelPicker}
+                <WorkspaceSwitcher
+                  label={switchingFolder ? 'Choosing…' : workspaceLabel}
+                  title={workspaceTitle}
+                  disabled={!bridge || switchingFolder || running}
+                  busy={switchingFolder}
+                  compact
+                  onChange={() => void pickWorkspace()}
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="chat-heading">
+                <p className="eyebrow">Private · on this computer</p>
+                <div className="chat-title-row">
+                  <h1>{view?.session.title ?? 'New chat'}</h1>
+                  {modelPicker}
+                </div>
+              </div>
+              <div className="header-tools">
+            <button
+              type="button"
+              className="phone-toggle"
+              aria-pressed={phoneView}
+              title="Show only the chat in an exact phone-sized screen"
+              onClick={togglePhoneView}
+            >
+              <span className="phone-glyph" aria-hidden="true">
+                ▯
+              </span>
+              Mobile
+            </button>
+
+            <div className="badges">
+              <span className="badge badge-local">On this computer</span>
+              <span
+                className="badge badge-chat"
+                title="A conversation, not checked work. Use Tasks for runs the app verifies."
               >
-                {autoVoice ? 'Voice replies on' : 'Voice replies off'}
-              </button>
-            ) : null}
+                Chat
+              </span>
+              {voiceAvailable ? (
+                <button
+                  type="button"
+                  className={`badge badge-voice ${autoVoice ? 'badge-voice-on' : ''}`}
+                  aria-pressed={autoVoice}
+                  title={voiceOutput?.note ?? 'Read answers aloud with the local voice'}
+                  onClick={toggleAutoVoice}
+                >
+                  {autoVoice ? 'Voice replies on' : 'Voice replies off'}
+                </button>
+              ) : null}
+            </div>
           </div>
+            </>
+          )}
         </header>
 
         {autoVoice && voiceOutput ? (
@@ -494,21 +937,20 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
 
         {!hasTextModel ? (
           <p className="chat-warning" role="status">
-            No text model is configured. Place the LFM3 GGUF in the models folder and restart the
-            app before chatting.
+            The writing model isn’t set up yet. Open <strong>Models</strong> in this header to
+            download it, or add a model file to the models folder and reload.
           </p>
         ) : null}
 
         <div className="chat-scroll" ref={scrollRef}>
           {showEmpty ? (
             <div className="chat-empty">
-              <p className="eyebrow">Chat, ask, or speak</p>
-              <h2>What should we work on?</h2>
+              <p className="eyebrow">Your local assistant</p>
+              <h2>What can I help you with?</h2>
               <p className="muted">
-                Route with the local decision model, search this folder, read and summarise files,
-                trace related files, look at attached images with the vision model, and draft
-                reports. Nothing is written until you approve the exact change, and nothing leaves
-                this machine.
+                Ask a question or describe something you’d like done. I can read and search the
+                folder you chose, summarise files, look at images, and draft reports. I’ll show you
+                any change before it happens, and nothing leaves this computer.
               </p>
               <div className="suggestions">
                 {SUGGESTIONS.map((suggestion) => (
@@ -565,6 +1007,23 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
             </div>
           ) : null}
 
+          {state.decision ? (
+            <div
+              className={`decision-chip decision-${state.decision.outcome}`}
+              title={state.decision.reason}
+            >
+              <span className="decision-point">
+                {state.decision.point === 'write_gate' ? 'write preflight' : 'evidence check'}
+              </span>
+              <span className="decision-outcome">{state.decision.outcome}</span>
+              <span className="decision-detail">
+                {state.decision.label.replace(/_/g, ' ')} ·{' '}
+                {(state.decision.confidence_bps / 100).toFixed(0)}%
+                {state.decision.target ? ` · ${state.decision.target}` : ''}
+              </span>
+            </div>
+          ) : null}
+
           {running ? (
             <div className="chat-status" role="status">
               <span className="pulse" aria-hidden="true" />
@@ -590,6 +1049,26 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
       </main>
     </div>
   );
+
+  if (phoneView) {
+    return (
+      <div className="phone-stage">
+        <button type="button" className="phone-stage-exit" onClick={exitPhoneView}>
+          Exit mobile view
+        </button>
+        <div
+          className="phone-frame"
+          role="region"
+          aria-label="Mobile chat preview"
+          style={{ transform: `scale(${phoneScale})` }}
+        >
+          {shell}
+        </div>
+      </div>
+    );
+  }
+
+  return shell;
 }
 
 function statusLabel(
@@ -608,6 +1087,12 @@ function statusLabel(
   if (status.state === 'routing') {
     return status.detail ? `Choosing a route: ${status.detail}` : 'Consulting the decision model…';
   }
+  if (status.state === 'preflight') {
+    return status.detail ?? 'Checking the proposed change against your request…';
+  }
+  if (status.state === 'checking_evidence') {
+    return status.detail ?? 'Checking whether the observations answer your request…';
+  }
   if (status.state === 'tool' || status.state === 'applying') {
     return status.detail ?? 'Working in the workspace…';
   }
@@ -621,6 +1106,79 @@ function humanize(value: string): string {
 
 function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+function folderName(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, '');
+  const parts = trimmed.split(/[\\/]/);
+  return parts.at(-1) || path;
+}
+
+function formatClock(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date);
+}
+
+function SignalIcon() {
+  return (
+    <svg viewBox="0 0 18 12" width="17" height="11" aria-hidden="true">
+      <rect x="0" y="7" width="3" height="5" rx="1" fill="currentColor" />
+      <rect x="5" y="4.5" width="3" height="7.5" rx="1" fill="currentColor" />
+      <rect x="10" y="2" width="3" height="10" rx="1" fill="currentColor" />
+      <rect x="15" y="0" width="3" height="12" rx="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function WifiIcon() {
+  return (
+    <svg viewBox="0 0 16 12" width="16" height="12" fill="none" aria-hidden="true">
+      <path
+        d="M1.2 4.1a9.7 9.7 0 0 1 13.6 0M3.8 6.6a6.1 6.1 0 0 1 8.4 0M6.3 9a2.6 2.6 0 0 1 3.4 0"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <circle cx="8" cy="11.1" r="0.8" fill="currentColor" />
+    </svg>
+  );
+}
+
+function BatteryIcon() {
+  return (
+    <svg viewBox="0 0 24 12" width="24" height="12" fill="none" aria-hidden="true">
+      <rect
+        x="0.7"
+        y="0.7"
+        width="20.2"
+        height="10.6"
+        rx="3"
+        stroke="currentColor"
+        strokeOpacity="0.45"
+        strokeWidth="1.3"
+      />
+      <rect x="2.4" y="2.4" width="14" height="7.2" rx="1.6" fill="currentColor" />
+      <path
+        d="M22.3 4.2v3.6"
+        stroke="currentColor"
+        strokeOpacity="0.45"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function MenuIcon() {
+  return (
+    <svg viewBox="0 0 18 18" width="18" height="18" fill="none" aria-hidden="true">
+      <path
+        d="M2.5 5h13M2.5 9h13M2.5 13h13"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
 
 function readBase64(file: File): Promise<string> {

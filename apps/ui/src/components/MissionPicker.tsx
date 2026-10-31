@@ -54,10 +54,10 @@ export function MissionPicker({
 
   return (
     <section className="panel" aria-labelledby="mission-picker-title">
-      <h2 id="mission-picker-title">Missions</h2>
+      <h2 id="mission-picker-title">Guided tasks</h2>
       <p className="muted">
-        Choose one specialized mission. Every run is bounded by its declared tools, checks,
-        and budgets, never by free-form chat.
+        Ready-made tasks with their own checks. Pick one, fill in the details, and the assistant
+        will stay inside the tools and limits shown on the card.
       </p>
 
       <div className="mission-grid">
@@ -119,7 +119,7 @@ export function MissionPicker({
             }
           }}
         >
-          <h3>Run inputs</h3>
+          <h3>Details</h3>
           {Object.entries(mission.inputs).map(([key, spec]) => (
             <MissionInput
               key={key}
@@ -150,7 +150,7 @@ export function MissionPicker({
           </div>
         </form>
       ) : (
-        <p className="muted">Select a mission to see its inputs and verification methods.</p>
+        <p className="muted">Pick a task to see what it needs and how it is checked.</p>
       )}
     </section>
   );

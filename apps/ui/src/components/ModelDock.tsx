@@ -26,7 +26,8 @@ export function ModelDock({
 
   return (
     <section className="panel" aria-labelledby="models-title">
-      <h2 id="models-title">Models</h2>
+      <h2 id="models-title">Local models</h2>
+      <p className="muted">These power chat and tasks. Everything runs on this computer.</p>
       <dl className="facts">
         {version ? (
           <div>

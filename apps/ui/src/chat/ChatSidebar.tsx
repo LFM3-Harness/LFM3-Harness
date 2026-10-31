@@ -1,11 +1,17 @@
 import { useRef, useState } from 'react';
 
-import type { ChatSession, HealthReport } from '../bridge/types';
+import type { ChatSession, HealthReport, ModelState, ModelStatus } from '../bridge/types';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 export function ChatSidebar({
   sessions,
   activeId,
   health,
+  workspaceLabel,
+  workspaceTitle,
+  workspaceDisabled,
+  workspaceBusy,
+  onChooseWorkspace,
   onSelect,
   onNew,
   onRename,
@@ -15,6 +21,11 @@ export function ChatSidebar({
   sessions: ChatSession[];
   activeId: string | null;
   health: HealthReport | null;
+  workspaceLabel: string;
+  workspaceTitle: string;
+  workspaceDisabled: boolean;
+  workspaceBusy: boolean;
+  onChooseWorkspace: () => void;
   onSelect: (sessionId: string) => void;
   onNew: () => void;
   onRename: (sessionId: string, title: string) => void;
@@ -61,8 +72,16 @@ export function ChatSidebar({
     <aside className="chat-sidebar" aria-label="Conversations">
       <div className="sidebar-brand">
         <span className="brand-mark">LFM3</span>
-        <span className="brand-sub">Local cowork</span>
+        <span className="brand-sub">Your local coworker</span>
       </div>
+
+      <WorkspaceSwitcher
+        label={workspaceLabel}
+        title={workspaceTitle}
+        disabled={workspaceDisabled}
+        busy={workspaceBusy}
+        onChange={onChooseWorkspace}
+      />
 
       <button type="button" className="new-chat" onClick={onNew}>
         <span aria-hidden="true">+</span> New chat
@@ -70,7 +89,7 @@ export function ChatSidebar({
 
       <nav className="session-list" aria-label="Chat history">
         {sessions.length === 0 ? (
-          <p className="sidebar-empty">No conversations yet. Your chats stay on this machine.</p>
+          <p className="sidebar-empty">No chats yet. Everything you do here stays on this computer.</p>
         ) : (
           sessions.map((session) => {
             const active = session.id === activeId;
@@ -150,62 +169,81 @@ export function ChatSidebar({
           <span className="tasks-icon" aria-hidden="true">
             ✓
           </span>
-          Verified tasks
-          <span className="tasks-hint">runs with frozen acceptance</span>
+          Tasks
+          <span className="tasks-hint">Guided work, checked step by step</span>
         </button>
         <div className="model-badges" aria-label="Local model status">
-          <span className={`model-chip model-${textModel?.state ?? 'absent'}`}>
+          <span
+            className={`model-chip model-${textModel?.state ?? 'absent'}`}
+            title="The writing model answers questions and edits files."
+          >
             <span className="dot" aria-hidden="true" />
-            text {textModel?.state ?? 'offline'}
+            Writing {stateLabel(textModel)}
           </span>
           <span
             className={`model-chip model-${visionModel?.state ?? 'absent'}`}
-            title="Reads attached and workspace images with the vision model."
+            title="Reads attached and workspace images."
           >
             <span className="dot" aria-hidden="true" />
-            vision {visionModel?.state ?? 'offline'}
+            Images {stateLabel(visionModel)}
           </span>
           {audioModel ? (
-            <span className={`model-chip model-${audioModel.state}`}>
+            <span
+              className={`model-chip model-${audioModel.state}`}
+              title="Turns your voice into text, locally."
+            >
               <span className="dot" aria-hidden="true" />
-              voice in {audioModel.state}
+              Voice input {stateLabel(audioModel)}
             </span>
           ) : (
-            <span className="model-chip model-absent" title="Add LFM3 audio weights and an mmproj to enable voice input.">
+            <span className="model-chip model-absent" title="Add the LFM3 audio model to speak instead of type.">
               <span className="dot" aria-hidden="true" />
-              voice in unavailable
+              Voice input not set up
             </span>
           )}
           <span
             className={`model-chip model-${decisionModel?.state ?? 'absent'}`}
-            title="Chooses each turn's route with the decision model."
+            title="Chooses which local model should handle each message."
           >
             <span className="dot" aria-hidden="true" />
-            decision {decisionModel?.state ?? 'offline'}
+            Router {stateLabel(decisionModel)}
           </span>
           <span
             className={`model-chip ${voiceOutput?.available ? 'model-ready' : 'model-absent'}`}
             title={voiceOutput?.note ?? 'Spoken replies need a local voice.'}
           >
             <span className="dot" aria-hidden="true" />
-            voice out{' '}
+            Voice replies{' '}
             {voiceOutput?.backend === 'lfm3-tts'
-              ? 'LFM3'
+              ? 'ready'
               : voiceOutput?.available
-                ? 'system'
-                : 'unavailable'}
-          </span>
-          <span className="model-chip model-local">
-            <span className="dot" aria-hidden="true" />
-            loopback only
+                ? 'ready'
+                : 'not set up'}
           </span>
         </div>
         {health ? (
           <p className="sidebar-note">
-            llama.cpp {health.llama.release || health.llama.build || 'pinned'} · v{health.version}
+            Runs offline with llama.cpp {health.llama.release || health.llama.build || 'pinned'}
           </p>
         ) : null}
       </div>
     </aside>
   );
+}
+
+function stateLabel(model: ModelStatus | null): string {
+  const state: ModelState | undefined = model?.state;
+  if (state === 'ready' || state === 'installed') {
+    return 'ready';
+  }
+  if (state === 'loading') {
+    return 'starting';
+  }
+  if (state === 'evicted') {
+    return 'idle';
+  }
+  if (state === 'error') {
+    return 'needs attention';
+  }
+  return 'not set up';
 }

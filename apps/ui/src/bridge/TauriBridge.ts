@@ -3,10 +3,12 @@ import { listen } from '@tauri-apps/api/event';
 
 import {
   CHAT_EVENT_CHANNEL,
+  DOWNLOAD_EVENT_CHANNEL,
   ENGINE_COMMANDS,
   JOB_EVENT_CHANNEL,
   RUN_EVENT_CHANNEL,
   type ChatEventListener,
+  type DownloadEventListener,
   type EngineBridge,
   type JobEventListener,
   type RunEventListener,
@@ -18,8 +20,10 @@ import type {
   ChatMessageRecord,
   ChatSession,
   ChatSessionView,
+  DownloadEvent,
   HealthReport,
   MissionManifest,
+  ModelCatalog,
   ModelKey,
   ModelStatus,
   RunEvent,
@@ -121,6 +125,32 @@ export class TauriBridge implements EngineBridge {
 
   releaseModel(modelKey: ModelKey): Promise<void> {
     return invoke<void>(ENGINE_COMMANDS.releaseModel, { modelKey });
+  }
+
+  chooseWorkspace(): Promise<string | null> {
+    return invoke<string | null>(ENGINE_COMMANDS.chooseWorkspace);
+  }
+
+  async modelCatalog(): Promise<ModelCatalog> {
+    const catalog = await invoke<ModelCatalog>(ENGINE_COMMANDS.modelCatalog);
+    // The engine emits an absent/null download; the view keeps it total.
+    return { ...catalog, download: catalog.download ?? null, runtime_note: catalog.runtime_note ?? null };
+  }
+
+  downloadModel(modelKey: ModelKey): Promise<void> {
+    return invoke<void>(ENGINE_COMMANDS.downloadModel, { modelKey });
+  }
+
+  cancelDownload(modelKey: ModelKey): Promise<void> {
+    return invoke<void>(ENGINE_COMMANDS.cancelDownload, { modelKey });
+  }
+
+  reloadModels(): Promise<ModelStatus[]> {
+    return invoke<ModelStatus[]>(ENGINE_COMMANDS.reloadModels);
+  }
+
+  async subscribeDownloads(listener: DownloadEventListener): Promise<Unsubscribe> {
+    return listen<DownloadEvent>(DOWNLOAD_EVENT_CHANNEL, (event) => listener(event.payload));
   }
 
   chooseInputFiles(mission: string, inputKey: string): Promise<string[]> {

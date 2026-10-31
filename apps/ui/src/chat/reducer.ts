@@ -4,6 +4,7 @@ import type {
   ChatMessageRecord,
   ChatRoute,
   ChatSessionView,
+  HarnessDecision,
 } from '../bridge/types';
 
 export interface ChatUiState {
@@ -11,6 +12,8 @@ export interface ChatUiState {
   streaming: Record<string, string>;
   status: { state: string; detail: string | null } | null;
   route: ChatRoute | null;
+  /** The latest decision-model gate result in this turn, if any. */
+  decision: HarnessDecision | null;
   running: boolean;
   error: string | null;
 }
@@ -20,6 +23,7 @@ export const initialChatState: ChatUiState = {
   streaming: {},
   status: null,
   route: null,
+  decision: null,
   running: false,
   error: null,
 };
@@ -63,6 +67,7 @@ export function applyChatEvent(state: ChatUiState, event: ChatEvent): ChatUiStat
         view: { ...view, messages: upsertMessage(view.messages, event.message) },
         running: true,
         error: null,
+        decision: null,
       };
     case 'session_updated':
       return {
@@ -114,10 +119,12 @@ export function applyChatEvent(state: ChatUiState, event: ChatEvent): ChatUiStat
       };
     case 'route':
       return { ...state, route: event.route };
+    case 'decision':
+      return { ...state, decision: event.decision };
     case 'error':
       return { ...state, error: event.message, running: false, status: null };
     case 'done':
-      return { ...state, running: false, status: null, route: null };
+      return { ...state, running: false, status: null, route: null, decision: null };
     default:
       return state;
   }

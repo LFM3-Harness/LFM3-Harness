@@ -4,8 +4,10 @@ import type {
   ChatMessageRecord,
   ChatSession,
   ChatSessionView,
+  DownloadEvent,
   HealthReport,
   MissionManifest,
+  ModelCatalog,
   ModelKey,
   ModelStatus,
   RunEvent,
@@ -45,6 +47,11 @@ export const ENGINE_COMMANDS = {
   retryRun: 'retry_run',
   listModels: 'list_models',
   releaseModel: 'release_model',
+  chooseWorkspace: 'choose_workspace',
+  modelCatalog: 'model_catalog',
+  downloadModel: 'download_model',
+  cancelDownload: 'cancel_download',
+  reloadModels: 'reload_models',
   chooseInputFiles: 'choose_input_files',
   openArtifact: 'open_artifact',
   listChatSessions: 'list_chat_sessions',
@@ -69,10 +76,14 @@ export const CHAT_EVENT_CHANNEL = 'lfm3:chat-event';
 /** Live job events: journaled turns, todos, and the terminal outcome. */
 export const JOB_EVENT_CHANNEL = 'lfm3:job-event';
 
+/** Live download progress for explicit, user-initiated model downloads. */
+export const DOWNLOAD_EVENT_CHANNEL = 'lfm3:download-event';
+
 export type Unsubscribe = () => void;
 export type RunEventListener = (event: RunEvent) => void;
 export type ChatEventListener = (event: ChatEvent) => void;
 export type JobEventListener = (event: JobEvent) => void;
+export type DownloadEventListener = (event: DownloadEvent) => void;
 
 /** Read and live-event access used by the reducer and stream controller. */
 export interface RunReadSource {
@@ -107,6 +118,15 @@ export interface EngineBridge extends RunReadSource, JobReadSource {
   retryRun(runId: RunId): Promise<RunId>;
   listModels(): Promise<ModelStatus[]>;
   releaseModel(modelKey: ModelKey): Promise<void>;
+  /** Opens the native folder picker; `null` when the person cancels. */
+  chooseWorkspace(): Promise<string | null>;
+  /** What can be downloaded, what is on disk, and which download is live. */
+  modelCatalog(): Promise<ModelCatalog>;
+  /** Starts one explicit download of a missing role. Refused while busy. */
+  downloadModel(modelKey: ModelKey): Promise<void>;
+  cancelDownload(modelKey: ModelKey): Promise<void>;
+  /** Swaps installed weights into the running engine when it is idle. */
+  reloadModels(): Promise<ModelStatus[]>;
   chooseInputFiles(mission: string, inputKey: string): Promise<string[]>;
   openArtifact(artifactId: string): Promise<void>;
 
@@ -122,4 +142,5 @@ export interface EngineBridge extends RunReadSource, JobReadSource {
   synthesizeSpeech(text: string): Promise<SpeechReply>;
   attachImage(name: string, dataBase64: string): Promise<string>;
   subscribeChat(listener: ChatEventListener): Promise<Unsubscribe>;
+  subscribeDownloads(listener: DownloadEventListener): Promise<Unsubscribe>;
 }
