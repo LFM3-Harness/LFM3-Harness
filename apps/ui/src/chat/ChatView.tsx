@@ -330,13 +330,20 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
     }
   }
 
-  function toggleMenu() {
-    const next = !menuOpen;
-    setMenuOpen(next);
+  function openModelMenu() {
+    setMenuOpen(true);
     setCatalogError(null);
-    if (next && bridge) {
+    if (bridge) {
       void refreshCatalog(bridge);
     }
+  }
+
+  function toggleMenu() {
+    if (menuOpen) {
+      setMenuOpen(false);
+      return;
+    }
+    openModelMenu();
   }
 
   function closeMenu() {
@@ -728,7 +735,9 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
           className={`model-picker-dot model-${textModel?.state ?? 'absent'}`}
           aria-hidden="true"
         />
-        <span className="model-picker-name">{textModel?.model ?? 'Local model'}</span>
+        <span className="model-picker-name">
+          {hasTextModel ? (textModel?.model ?? 'Local model') : 'Download models'}
+        </span>
         <span className="model-picker-caret" aria-hidden="true">
           ▾
         </span>
@@ -931,10 +940,15 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
         ) : null}
 
         {!hasTextModel ? (
-          <p className="chat-warning" role="status">
-            The writing model isn’t set up yet. Open the <strong>model menu</strong> to download it,
-            or add a model file to the models folder and reload.
-          </p>
+          <div className="chat-warning" role="status">
+            <span>
+              The writing model isn’t set up yet. Download it here, or add a model file to the
+              models folder and reload.
+            </span>
+            <button type="button" className="small" onClick={openModelMenu}>
+              Download models
+            </button>
+          </div>
         ) : null}
 
         <div className="chat-scroll" ref={scrollRef}>

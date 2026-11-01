@@ -408,7 +408,11 @@ impl Engine {
             .as_ref()
             .map(ModelManager::active_models)
             .unwrap_or_default();
-        let weights = read(&self.weights).clone();
+        // Re-scan on every catalog request. Weights may have been copied in by
+        // hand since boot (for example from a previous installation), and the
+        // model table must report those files immediately. The serving manager
+        // still swaps them only through the explicit reload path.
+        let weights = InstalledWeights::discover(Some(&self.models_dir));
         let entries: Vec<Value> = downloads::catalog()
             .into_iter()
             .map(|model| {
@@ -1991,6 +1995,25 @@ mod tests {
             !fixture.engine.models_dir().exists(),
             "reading the catalog must not create the models folder"
         );
+    }
+
+    #[tokio::test]
+    async fn catalog_detects_weights_added_after_boot() {
+        let fixture = fixture().await;
+        let model = downloads::catalog_model(ModelKey::Text).expect("text model");
+        let path = downloads::file_path(fixture.engine.models_dir(), &model, &model.files[0]);
+        fs::create_dir_all(path.parent().expect("model folder")).expect("model folder");
+        fs::write(&path, b"GGUF").expect("placeholder weight");
+
+        let catalog = fixture.engine.model_catalog();
+        let text = catalog["models"]
+            .as_array()
+            .expect("catalog models")
+            .iter()
+            .find(|entry| entry["key"] == json!("text"))
+            .expect("text entry");
+        assert_eq!(text["installed"], json!(true));
+        assert_eq!(text["state"], json!("installed"));
     }
 
     #[tokio::test]

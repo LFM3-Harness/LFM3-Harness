@@ -833,6 +833,24 @@
   color: #74551e;
 }
 
+.chat-warning > span {
+  min-width: 0;
+}
+
+.chat-warning > button {
+  flex: none;
+}
+
+@media (max-width: 560px) {
+  .chat-warning {
+    flex-wrap: wrap;
+  }
+
+  .chat-warning > button {
+    width: 100%;
+  }
+}
+
 .chat-scroll {
   flex: 1;
   min-height: 0;

@@ -280,19 +280,14 @@ fn find_binary(stem: &str) -> Option<PathBuf> {
             return Some(path);
         }
     }
-    let mut roots = Vec::new();
-    if let Ok(executable) = std::env::current_exe() {
-        if let Some(directory) = executable.parent() {
-            roots.push(directory.to_path_buf());
-        }
-    }
-    if let Ok(directory) = std::env::current_dir() {
-        roots.push(directory);
-    }
-    for mut directory in roots {
+    for mut directory in search_roots() {
         for _ in 0..8 {
             for relative in [
                 PathBuf::from("tools").join("llama").join(&name),
+                PathBuf::from("resources")
+                    .join("tools")
+                    .join("llama")
+                    .join(&name),
                 PathBuf::from(&name),
             ] {
                 let candidate = directory.join(relative);
@@ -309,6 +304,24 @@ fn find_binary(stem: &str) -> Option<PathBuf> {
     None
 }
 
+/// Directories discovery may walk: the installed executable first, so assets
+/// bundled beside it win over whatever folder the shortcut was launched from,
+/// then the process working directory for development and CLI use.
+fn search_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            roots.push(directory.to_path_buf());
+        }
+    }
+    if let Ok(directory) = std::env::current_dir() {
+        if !roots.iter().any(|root| root == &directory) {
+            roots.push(directory);
+        }
+    }
+    roots
+}
+
 #[must_use]
 pub fn find_models_dir() -> Option<PathBuf> {
     if let Some(raw) = std::env::var_os("LFM3_MODELS_DIR") {
@@ -317,18 +330,52 @@ pub fn find_models_dir() -> Option<PathBuf> {
             return Some(path);
         }
     }
-    let mut directory = std::env::current_dir().ok()?;
-    for _ in 0..8 {
-        let candidate = directory.join("models");
-        if candidate.is_dir() {
-            return Some(candidate);
+    // An empty `models` directory is intentionally ignored. A fresh installer
+    // may leave one beside the executable, but downloads still belong in the
+    // trusted application-data folder until real weights exist.
+    for mut directory in search_roots() {
+        for _ in 0..8 {
+            let candidate = directory.join("models");
+            if candidate.is_dir() && contains_gguf(&candidate) {
+                return Some(candidate);
+            }
+            let Some(parent) = directory.parent() else {
+                break;
+            };
+            directory = parent.to_path_buf();
         }
-        let Some(parent) = directory.parent() else {
-            break;
-        };
-        directory = parent.to_path_buf();
     }
     None
+}
+
+/// True when a folder already holds at least one GGUF weight. This is used to
+/// distinguish a real models folder from an empty placeholder, including the
+/// Hugging Face cache layout used by the development tree.
+fn contains_gguf(root: &Path) -> bool {
+    let mut pending = vec![(root.to_path_buf(), 0_u32)];
+    while let Some((directory, depth)) = pending.pop() {
+        if depth > 6 {
+            continue;
+        }
+        let Ok(entries) = fs::read_dir(&directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push((path, depth + 1));
+                continue;
+            }
+            if path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("gguf"))
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Largest GGUF whose file name contains `token`, searched without following
@@ -458,6 +505,21 @@ mod tests {
             0,
             "setup must never download or create weights"
         );
+    }
+
+    #[test]
+    fn an_empty_models_folder_is_not_treated_as_provisioned() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let models = directory.path().join("models");
+        fs::create_dir_all(&models).expect("models dir");
+        assert!(!contains_gguf(&models));
+
+        let weights = models
+            .join("models--LiquidAI--LFM3-1.7B-GGUF")
+            .join("snapshots");
+        fs::create_dir_all(&weights).expect("weights dir");
+        fs::write(weights.join("LFM3-1.7B-Q4_K_M.gguf"), b"GGUF").expect("weight");
+        assert!(contains_gguf(&models));
     }
 
     #[test]

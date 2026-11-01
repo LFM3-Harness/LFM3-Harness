@@ -144,7 +144,9 @@ cd apps/desktop
 npx tauri build --bundles nsis
 ```
 
-Installer: `target/release/bundle/nsis/LFM3 Workspace_0.1.0_x64-setup.exe`. The bundle ships `missions/` as a resource, so an installed application never reads the source tree. The installer defaults to `%LOCALAPPDATA%\LFM3 Workspace`, a path containing a space.
+Installer: `target/release/bundle/nsis/LFM3 Workspace_0.1.0_x64-setup.exe`. The bundle ships `missions/` plus a pinned CPU llama.cpp runtime under `tools/llama` (`llama-server`, `llama-tts`, every CPU backend, `libomp`, and the VC++ runtime DLLs), so the installed application runs without a separate llama.cpp setup. The build stages those files with `scripts/stage-llama-runtime.mjs`; the 594 MB CUDA backend and the development tools are not included because the CPU profile starts servers with `-ngl 0`.
+
+GGUF weights are deliberately absent from the installer, which is why it stays at about 15 MB. The only download after installation is the model weights the person requests from the **Models** menu. The installer defaults to `%LOCALAPPDATA%\LFM3 Workspace`, a path containing a space.
 
 ### Chat and voice
 
@@ -406,6 +408,6 @@ Legacy Python runtime data under `.lfm3/`, if present, is not used by the Rust a
 
 The first release ships the chat surface plus four verified missions. The verified path is accepted end-to-end for `desk_task` with the real LFM3 text model. `screen_qa`, `voice_intake`, and `doc_extract` remain `human_review_only` until a frozen semantic holdout is evaluated with the real models. Chat is available but is not part of that acceptance record.
 
-The release scope audit found no Python source, project files, caches, or launch commands; no remote model endpoints, shell plugin, broad filesystem capability, or unguarded scripted fallback. The single outbound path is the explicit **Models** download command, pinned to `huggingface.co/LiquidAI` with fixed file names, byte lengths, and SHA-256 digests; setup discovery and boot never contact the network. The installed tree contains only `lfm3-desktop.exe`, `uninstall.exe`, and the four mission files, whose hashes match the source. The production UI bundle contains no `DemoBridge` symbol.
+The release scope audit found no Python source, project files, caches, or launch commands; no remote model endpoints, shell plugin, broad filesystem capability, or unguarded scripted fallback. The single outbound path is the explicit **Models** download command, pinned to `huggingface.co/LiquidAI` with fixed file names, byte lengths, and SHA-256 digests; setup discovery and boot never contact the network. The installed tree contains `lfm3-desktop.exe`, `uninstall.exe`, the four mission files, and the bundled CPU llama.cpp runtime, and no GGUF weights. The production UI bundle contains no `DemoBridge` symbol.
 
 Known gaps for the next task: qualify decision routing, folder search, related-file discovery, report writing, native streamed tool calls, the fenced-call fallback, cancellation, and approval expiry with the real text and decision models; qualify vision attachments with the real VL model and projector; qualify voice transcription with the real audio model and `mmproj`; exercise the LFM3 speech-output path end-to-end in the desktop app (llama-tts itself was verified directly on this machine); perform the semantic holdout qualification and decide whether to enable automatic semantic passing; exercise replanning with the real model (it is verified only by automated tests today); and either wire `limits.max_tokens` into executor/planner requests or remove it from the configuration surface, since the executor currently uses its built-in 512-token cap and the planner a fixed 1536.

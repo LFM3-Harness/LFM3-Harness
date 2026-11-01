@@ -32,9 +32,12 @@ runs/
 models/
 tools/llama/*.exe
 tools/llama/*.dll
+# Runtime staged into the installer by scripts/stage-llama-runtime.mjs
+apps/desktop/src-tauri/resources/llama/
 
 # Local build and run artifacts
 /tmp/
+/release/
 *.log
 /desktop-window.png
 
