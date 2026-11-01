@@ -1,0 +1,95 @@
+name: Release Linux CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  linux-cli:
+    name: Build Linux headless CLI
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build headless CLI
+        run: cargo build -p lfm3-cli --release --no-default-features
+
+      - name: Download pinned llama.cpp Linux runtime
+        run: |
+          curl -L --fail --retry 3 \
+            -o llama-b11960-bin-ubuntu-x64.tar.gz \
+            https://github.com/ggml-org/llama.cpp/releases/download/b11960/llama-b11960-bin-ubuntu-x64.tar.gz
+          mkdir -p llama
+          tar -xzf llama-b11960-bin-ubuntu-x64.tar.gz -C llama
+
+      - name: Assemble CLI release
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG="LFM3-Workspace-linux-x64"
+          rm -rf dist
+          mkdir -p "dist/$PKG/tools/llama" "dist/$PKG/missions"
+
+          cp target/release/lfm3-cli "dist/$PKG/"
+          cp missions/*.json "dist/$PKG/missions/"
+          cp -a llama/llama-b11960/llama-server \
+            llama/llama-b11960/llama-tts \
+            "dist/$PKG/tools/llama/"
+          cp -a llama/llama-b11960/lib*.so* "dist/$PKG/tools/llama/"
+          cp llama/llama-b11960/LICENSE "dist/$PKG/tools/llama/LICENSE-llama.cpp"
+          cp README.md "dist/$PKG/README.md"
+
+          cat > "dist/$PKG/run.sh" <<'EOF'
+          #!/bin/sh
+          set -eu
+          DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+          if [ -z "${LFM3_LLAMA_SERVER:-}" ] && [ -x "$DIR/tools/llama/llama-server" ]; then
+              export LFM3_LLAMA_SERVER="$DIR/tools/llama/llama-server"
+          fi
+          if [ -z "${LFM3_MODELS_DIR:-}" ] && [ -d "$DIR/models" ]; then
+              export LFM3_MODELS_DIR="$DIR/models"
+          fi
+          exec "$DIR/lfm3-cli" "$@"
+          EOF
+          chmod +x "dist/$PKG/run.sh" "dist/$PKG/lfm3-cli" "dist/$PKG/tools/llama/llama-server" "dist/$PKG/tools/llama/llama-tts"
+
+          cat > "dist/$PKG/LINUX.txt" <<'EOF'
+          LFM3 Workspace Linux release
+
+          This archive contains the headless lfm3 CLI and the pinned llama.cpp
+          b11960 / v0.8.0 Linux runtime. The desktop application is Windows-only.
+
+          Model weights are not included. Put the pinned GGUF files in models/
+          beside run.sh, or point LFM3_MODELS_DIR at an existing weights folder.
+
+          Quick checks:
+            ./run.sh doctor
+            ./run.sh models --probe
+
+          The release has no model downloader; model weights are supplied
+          separately. See README.md for the supported missions and setup.
+          EOF
+          chmod +x "dist/$PKG/LINUX.txt"
+
+          tar -C dist -czf \
+            "dist/LFM3-Workspace_0.1.0_linux-x64_cli.tar.gz" \
+            "$PKG"
+
+      - name: Attach Linux asset to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: gh release upload "$TAG" dist/*.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
