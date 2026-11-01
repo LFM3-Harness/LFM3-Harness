@@ -20,6 +20,8 @@ apps/desktop/src-tauri/target/
 # Local runtime state
 .env
 .lfm3/
+# Generated sandbox runtime homes (caches, telemetry, temp workspaces)
+.freebuff/
 runs/
 *.db
 *.db-shm
