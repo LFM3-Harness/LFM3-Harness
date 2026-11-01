@@ -66,6 +66,9 @@ jobs:
           npm --prefix apps/ui ci
           npm --prefix apps/desktop ci
 
+      - name: Stage the bundled runtime
+        run: node scripts/stage-llama-runtime.mjs
+
       - name: Test the harness and Windows process containment
         run: |
           cargo test -p lfm3-harness --lib
@@ -128,6 +131,9 @@ jobs:
           tar -xzf "/tmp/llama-$LLAMA_REF-bin-ubuntu-x64.tar.gz" -C /tmp/llama
           cp -a "/tmp/llama/llama-$LLAMA_REF/." tools/llama/
           ls tools/llama | head -5
+
+      - name: Stage the bundled runtime
+        run: node scripts/stage-llama-runtime.mjs
 
       - name: Test the harness and Linux process containment
         run: |
