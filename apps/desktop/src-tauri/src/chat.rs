@@ -32,7 +32,10 @@ use tokio::sync::{oneshot, Mutex};
 use crate::engine::EngineError;
 
 const MAX_TURN_MESSAGES: u32 = 240;
-const HISTORY_CHARS: usize = 18_000;
+// The text model is served with a 32,000-token window. Roughly four characters
+// per token leaves headroom for the system prompt, new tool results, and the
+// 1,024-token reply while still letting long sessions keep their history.
+const HISTORY_CHARS: usize = 96_000;
 const MAX_ROUNDS: usize = 12;
 const MAX_INPUT_CHARS: usize = 32_000;
 const MAX_AUDIO_BASE64: usize = 48 * 1024 * 1024;

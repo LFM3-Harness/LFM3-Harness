@@ -1427,8 +1427,12 @@ fn build_model_manager(
     .ok()
 }
 
+/// The acting model's served context window. Members of the LFM3 family are
+/// trained for 32k, so this is the largest window the runtime can honour.
+const TEXT_CONTEXT_TOKENS: u32 = 32_000;
+
 fn text_launch_args(config: &Config, weight: &Path) -> Vec<String> {
-    let mut args = base_launch_args(&config.text_url, weight, 8192);
+    let mut args = base_launch_args(&config.text_url, weight, TEXT_CONTEXT_TOKENS);
     args.push("--alias".to_owned());
     args.push(config.text_model.clone());
     args

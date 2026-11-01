@@ -6,6 +6,16 @@ The primary surface is a conversation. You can type, attach an image, or record 
 
 Chat is deliberately **not** verified work: anything that must be machine-certified is started as a mission under **Verified tasks**, where frozen acceptance contracts, independent checks, informed retries, and provenance-bound evidence decide whether a run passes. A chat message can never satisfy a mission check.
 
+## Screenshots
+
+![LFM3 Workspace chat surface with all four local model roles ready](docs/screenshots/chat-desktop.png)
+
+The chat surface on Windows, with the bundled llama.cpp runtime detected and all four local roles ready. The folder chip is the only workspace boundary the tools can reach.
+
+![The harness reading the project, showing tool output, routing, and the evidence gate mid-turn](docs/screenshots/harness-working.png)
+
+A real turn in progress: `search_files` and `list_files` output, the d1 route, the evidence gate, and the Stop control while the harness keeps working.
+
 ## Current status
 
 This repository is an all-Rust harness with a working desktop application and headless CLI:
@@ -160,7 +170,7 @@ The application opens on chat. Conversations are stored in `chat.db` inside the 
 - **Image attachments.** The composer's **+img** control stores a user-chosen PNG, JPEG, WebP, or GIF under `.attachments/<uuid>-<name>.<ext>` inside the workspace (20 MB limit), then inserts a workspace-relative instruction. The model inspects it with `look`, which loads the image through the local vision model. This attachment is user-initiated, is not a model write, and never touches the verified run journal.
 - **Explicit approval.** A write or edit appears inline with its path and exact content or diff. **Allow once** executes it; **Deny** leaves the file untouched and tells the model not to retry. Pending actions expire after ten minutes. Actions are persisted with the transcript.
 - **Small-model resilience.** The runtime accepts native streamed tool calls and a fenced ```tool JSON block when the model cannot emit a native call. Both paths use the same approval gate, so the fallback cannot bypass consent.
-- **Bounded context.** Each request carries a fixed system prompt, the newest 240 messages capped at about 18,000 characters, `temperature 0.3`, and at most 1,024 output tokens.
+- **Bounded context.** The text model is served with a 32,000-token window. Each request carries a fixed system prompt, the newest 240 messages capped at about 96,000 characters (about 24,000 tokens, leaving room for tool output and the reply), `temperature 0.3`, and at most 1,024 output tokens.
 - **Local voice input.** The browser records with `MediaRecorder`, decodes and resamples the clip to 16 kHz mono WAV, and sends it as base64 to Rust. The local audio model receives an `input_audio` content part; no audio leaves the machine. The transcript is placed in the composer for review before you send it. Voice requires both the audio GGUF and its `mmproj`; otherwise the microphone path reports that the voice model is unavailable.
 - **Local LFM3 voice output.** **Speak** and the header **Voice replies** toggle call `synthesize_speech`, which renders one answer with `llama-tts` using the same LFM3-Audio-2B weight and `mmproj` that listen. The health report exposes `voice_output.backend = "lfm3-tts"`, `model = "LFM3-Audio-2B"`, and `lfm3_tts_weights = true` when the binary and both files are present. The model card specifies the pinned b11960 runtime, `--tts-voice female|male`, and audio sampling at temperature 1.0, top-k 128, repetition penalty 1.1; this harness uses the documented defaults. A 120-second watchdog kills the owned `llama-tts` process, and the temporary WAV is removed after it is returned. Nothing is uploaded, and no voice is fetched unless the person downloads it from the Models menu. If the voice pair is incomplete, Windows falls back to the offline system voice and labels it `system-sapi`.
 - **Workspace folder selection.** The folder chip in the chat header opens the native folder picker and moves chat and job work to the chosen folder. The engine canonicalizes the path, persists it in `setup.json`, and refuses the switch while a chat turn, job, or verified run is live, so no operation changes its ground mid-flight. The chip shows the current folder and the engine's `health.workspace` is the single source of truth.

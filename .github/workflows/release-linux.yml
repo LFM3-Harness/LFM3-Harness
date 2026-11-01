@@ -51,6 +51,8 @@ jobs:
           cp -a llama/llama-b11960/lib*.so* "dist/$PKG/tools/llama/"
           cp llama/llama-b11960/LICENSE "dist/$PKG/tools/llama/LICENSE-llama.cpp"
           cp README.md "dist/$PKG/README.md"
+          mkdir -p "dist/$PKG/docs/screenshots"
+          cp docs/screenshots/*.png "dist/$PKG/docs/screenshots/"
 
           cat > "dist/$PKG/run.sh" <<'EOF'
           #!/bin/sh

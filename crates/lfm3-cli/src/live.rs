@@ -150,7 +150,7 @@ pub async fn connect(
 fn launch_args(gguf: &Path, config: &Config) -> Vec<String> {
     let host = config.text_url.host_str().unwrap_or("127.0.0.1");
     let port = config.text_url.port_or_known_default().unwrap_or(8080);
-    let mut args = base_launch_args(host, port, gguf, 4096);
+    let mut args = base_launch_args(host, port, gguf, 32_000);
     args.push("--alias".to_owned());
     args.push(config.text_model.clone());
     args
