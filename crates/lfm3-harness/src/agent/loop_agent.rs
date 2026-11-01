@@ -1,4 +1,4 @@
-//! Codebuff-style agent loop for a stated job.
+//! Model-driven agent loop for a stated job.
 //!
 //! Instead of freezing a step list up front, the loop lets the acting model
 //! decide the next action from what it has actually observed. Each turn:
