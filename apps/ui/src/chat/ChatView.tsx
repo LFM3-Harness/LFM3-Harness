@@ -25,6 +25,7 @@ import {
 /** Exact logical viewport of a phone-sized chat screen (iPhone 13/14). */
 const PHONE_WIDTH = 390;
 const PHONE_HEIGHT = 844;
+const PHONE_STAGE_BREAKPOINT = 720;
 const PHONE_STORAGE_KEY = 'lfm3.phoneView';
 
 const SUGGESTIONS = [
@@ -65,7 +66,7 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
   const [phoneView, setPhoneView] = useState(
     () => window.localStorage.getItem(PHONE_STORAGE_KEY) === '1',
   );
-  const [phoneScale, setPhoneScale] = useState(1);
+  const [phoneScale, setPhoneScale] = useState(phoneFitScale);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const activeRef = useRef<string | null>(null);
   const loadToken = useRef(0);
@@ -225,36 +226,26 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
 
   useEffect(() => {
     if (!phoneView) {
-      return;
-    }
-    const fit = () => {
-      const width = (window.innerWidth - 48) / PHONE_WIDTH;
-      const height = (window.innerHeight - 48) / PHONE_HEIGHT;
-      setPhoneScale(Math.max(0.5, Math.min(1, width, height)));
-    };
-    fit();
-    window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
-  }, [phoneView]);
-
-  useEffect(() => {
-    if (!phoneView) {
       setPhoneScale(1);
       return;
     }
-    const updateScale = () => {
-      // Keep the phone at its exact 390x844 logical size; shrink only when the
-      // app window itself is smaller than the frame plus its margin.
-      const fit = Math.min(
-        (window.innerWidth - 32) / PHONE_WIDTH,
-        (window.innerHeight - 32) / PHONE_HEIGHT,
-      );
-      setPhoneScale(Math.max(0.4, Math.min(1, fit)));
-    };
+    const updateScale = () => setPhoneScale(phoneFitScale());
     updateScale();
     window.addEventListener('resize', updateScale);
     return () => window.removeEventListener('resize', updateScale);
   }, [phoneView]);
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 900px)');
+    const closeDrawer = () => {
+      if (!query.matches) {
+        setDrawerOpen(false);
+      }
+    };
+    closeDrawer();
+    query.addEventListener('change', closeDrawer);
+    return () => query.removeEventListener('change', closeDrawer);
+  }, []);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -815,7 +806,7 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
       {phoneView ? null : renderSidebar()}
 
       <main className="chat-main">
-        {phoneView && drawerOpen ? (
+        {drawerOpen ? (
           <>
             <button
               type="button"
@@ -859,6 +850,18 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
             </div>
           ) : (
             <>
+              <button
+                type="button"
+                className="sidebar-toggle"
+                aria-label="Open conversations"
+                aria-expanded={drawerOpen}
+                onClick={() => {
+                  setDrawerOpen(true);
+                  setMenuOpen(false);
+                }}
+              >
+                <MenuIcon />
+              </button>
               <div className="chat-heading">
                 <p className="eyebrow">Private · on this computer</p>
                 <div className="chat-title-row">
@@ -1095,12 +1098,20 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
           Exit mobile view
         </button>
         <div
-          className="phone-frame"
-          role="region"
-          aria-label="Mobile chat preview"
-          style={{ transform: `scale(${phoneScale})` }}
+          className="phone-scale-box"
+          style={{
+            width: PHONE_WIDTH * phoneScale,
+            height: PHONE_HEIGHT * phoneScale,
+          }}
         >
-          {shell}
+          <div
+            className="phone-frame"
+            role="region"
+            aria-label="Mobile chat preview"
+            style={{ transform: `scale(${phoneScale})` }}
+          >
+            {shell}
+          </div>
         </div>
       </div>
     );
@@ -1144,6 +1155,19 @@ function humanize(value: string): string {
 
 function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+function phoneFitScale(): number {
+  // The frame keeps its exact 390x844 logical size. Reserve a small margin for
+  // the frame ring and only ever shrink, so the whole phone stays on screen.
+  // Narrow stages also reserve a bar for the exit button above the phone.
+  const stacked = window.innerWidth <= PHONE_STAGE_BREAKPOINT;
+  const verticalMargin = stacked ? 84 : 32;
+  const fit = Math.min(
+    (window.innerWidth - 32) / PHONE_WIDTH,
+    (window.innerHeight - verticalMargin) / PHONE_HEIGHT,
+  );
+  return Math.min(1, Math.max(fit, 0.01));
 }
 
 function folderName(path: string): string {
