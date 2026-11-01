@@ -1,7 +1,7 @@
 # LFM3 Local Harness — Rust-Only System Specification
 
 Status: implemented through the multi-model chat-first cowork surface; verified-task release accepted  
-Target: Windows 11, stable Rust MSVC, React + TypeScript, Tauri 2, CPU-first local inference  
+Target: Windows 11 and Linux x86_64 desktops, stable Rust (MSVC on Windows, GNU on Linux), React + TypeScript, Tauri 2, CPU-first local inference  
 Inference compatibility baseline: llama.cpp b11960 / v0.8.0, unchanged
 
 ## 1. Product contract
@@ -53,7 +53,7 @@ A model saying “done” is never completion evidence.
 ## 4. Architecture
 
 ```text
-┌────────────────────── Windows desktop process ──────────────────────┐
+┌──────────────────── Desktop process (Windows / Linux) ────────────────────┐
 │ Tauri 2 application                                                 │
 │                                                                   │
 │ React + TypeScript UI                                               │
@@ -83,7 +83,7 @@ A model saying “done” is never completion evidence.
 │                         │                                           │
 │                         ▼                                           │
 │ ProcessSupervisor                                                   │
-│  owned llama.cpp/tool children · Windows Job Object · cleanup       │
+│  owned llama.cpp/tool children · Job Object / process group · cleanup │
 └─────────────────────────────┬───────────────────────────────────────┘
                               │
                               ▼
@@ -100,7 +100,7 @@ The desktop application owns its inference children. Development may intentional
 ```text
 Cargo.toml                       Rust workspace
 Cargo.lock                       Reproducible Rust dependency lock
-rust-toolchain.toml              Stable MSVC toolchain policy
+rust-toolchain.toml              Stable Rust toolchain policy (MSVC on Windows, GNU on Linux)
 missions/                        Versioned mission JSON manifests
 crates/
   lfm3-harness/
@@ -171,7 +171,7 @@ apps/
       src/chat.rs                Chat turn loop, approvals, voice, live events
       src/commands.rs            Typed UI command surface
       src/events.rs              Durable event forwarding
-      src/job_windows.rs         Windows Job Object ownership
+      src/job_windows.rs         Platform process ownership (Job Object / process group)
 scripts/
   smoke.ps1                      Packaged native smoke checks
   accept.ps1                     Static, UI, installer, and installed-smoke gates
@@ -202,7 +202,7 @@ Core dependencies are selected for a narrow purpose:
 - `tracing` and `tracing-subscriber`: structured local logs.
 - `directories`: per-user application-data paths.
 - `sysinfo`: physical memory and resource observations.
-- `windows`: Windows Job Object supervision in the desktop/supervisor boundary.
+- `windows`: Windows Job Object supervision; `unix`: one process group per owned child. Both live in the desktop/supervisor boundary.
 - `tauri` v2 and `tauri-plugin-single-instance`: desktop shell.
 
 Dependencies must not introduce a Python runtime, a remote telemetry default, or a second model runtime.
@@ -648,18 +648,18 @@ A live chat event is applied only when it belongs to the active session. Streami
 
 The route is visible rather than implied: a live banner names the intent, whether d1 or keywords chose it, the confidence, and the local roles used; the first assistant message keeps a badge and the decision reason. The sidebar reports the state of the text, vision, audio-input, decision, and voice-output capabilities independently, so a missing optional model is explicit. Starting a new turn, switching sessions, creating a chat, or unmounting pauses any spoken reply; an in-flight synthesis is invalidated so it cannot play into the wrong conversation.
 
-## 19. Windows process ownership and packaging
+## 19. Desktop process ownership and packaging
 
 There is one desktop executable containing Tauri and the harness library. There is no engine sidecar.
 
-`ProcessSupervisor` creates a Windows Job Object with kill-on-close semantics. Owned llama.cpp, TTS, and approved command children are started suspended, assigned to the job, and resumed. Shutdown terminates only owned processes and waits for their exit.
+On Windows, `ProcessSupervisor` creates a Job Object with kill-on-close semantics. Owned llama.cpp, TTS, and approved command children are started suspended, assigned to the job, and resumed. On Linux, every owned child becomes the leader of its own process group; shutdown signals the group and reaps the child. Shutdown terminates only owned processes and waits for their exit on both platforms.
 
 The supervisor is also used by the CLI so headless acceptance tests receive the same cleanup behavior.
 
 Packaging:
 
-- Stable Rust MSVC and required Microsoft C++ build tools.
-- Tauri 2 NSIS installer.
+- Stable Rust with the MSVC toolchain and Microsoft C++ build tools on Windows; the GNU toolchain on Linux.
+- Tauri 2 NSIS installer on Windows; `.deb` and `.AppImage` bundles on Linux.
 - React production assets embedded by Tauri.
 - Mission manifests included as validated resources or compiled-in immutable assets.
 - Absolute configured paths for models and llama.cpp binaries; never depend on current working directory.
@@ -707,7 +707,7 @@ Measured limits of that run:
 - Semantic holdout qualification was not performed. `screen_qa`, `voice_intake`, and `doc_extract` remain `human_review_only`; automatic semantic passing is disabled.
 - Real-model replanning was not triggered in the eight cases. It is covered by automated recovery/executor tests only.
 - The executor uses its built-in 512-token completion cap and the planner a fixed 1536. `limits.max_tokens` (default 4096) is parsed and validated but not applied to those requests, so the configuration surface overstates what is wired.
-- Wall times and peak memory are machine-specific; the NSIS installer is not claimed to be byte-reproducible across rebuilds.
+- Wall times and peak memory are machine-specific; the NSIS installer and the Linux `.deb`/`.AppImage` bundles are not claimed to be byte-reproducible across rebuilds.
 
 Semantic judges use separate development and frozen holdout fixtures. Any confident false pass on the holdout disables automatic semantic passing for that mission. A calibration percentage alone is not sufficient evidence for automatic certification.
 
@@ -762,7 +762,7 @@ This definition does not include semantic holdout qualification or real-model re
 | Model proposes easier checks after failure | Impossible by design: recovery accepts only ExecutionStrategy with the same acceptance hash |
 | Typed verifier still certifies the wrong artifact | Bind checks to attempt, artifact ID, path scope, and hash; add adversarial provenance fixtures |
 | Semantic judge produces a confident false pass | Disable automatic semantic pass for that mission and require human review |
-| App crash leaves inference children running | Windows Job Object kill-on-close plus packaged crash testing |
+| App crash leaves inference children running | Windows Job Object kill-on-close and Linux process-group cleanup, plus packaged crash testing |
 | CLI and desktop run concurrently | Shared engine lease and typed RunBusy outcome |
 | Small chat model cannot emit native tool calls | Accept a fenced tool block, keep the same validation and approval gate, and surface a prose-only answer honestly |
 | Chat reply is mistaken for verified work | Separate `chat.db` and event channel, "not verified" labels, and no path from chat events to the run journal |

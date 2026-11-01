@@ -35,6 +35,10 @@ tools/llama/*.dll
 # Runtime staged into the installer by scripts/stage-llama-runtime.mjs
 apps/desktop/src-tauri/resources/llama/
 
+# Local launch site and dependency bootstrap
+/web/
+/.tools/
+
 # Local build and run artifacts
 /tmp/
 /release/

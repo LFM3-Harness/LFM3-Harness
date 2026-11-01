@@ -2157,7 +2157,7 @@ checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
 name = "lfm3-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "lfm3-harness",
@@ -2170,7 +2170,7 @@ dependencies = [
 
 [[package]]
 name = "lfm3-desktop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
@@ -2194,9 +2194,10 @@ dependencies = [
 
 [[package]]
 name = "lfm3-harness"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures-util",
+ "libc",
  "regex",
  "reqwest 0.12.28",
  "rusqlite",

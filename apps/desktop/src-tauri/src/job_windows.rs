@@ -1,10 +1,10 @@
 //! Application-lifetime process containment.
 //!
-//! One kill-on-close Job Object is created for the desktop process. Model
-//! servers, command tools, and any other harness-owned child are spawned
-//! through this supervisor, so closing the application (or losing it abruptly)
-//! closes the job and terminates exactly those processes. External servers the
-//! user started separately are never members of this job and are never touched.
+//! Windows uses one kill-on-close Job Object; Unix puts every owned child in its
+//! own process group. Model servers, command tools, and any other harness-owned
+//! child are spawned through this supervisor, so closing the application takes
+//! exactly those processes with it. External servers the user started separately
+//! are never members and are never touched.
 
 #[cfg(all(windows, debug_assertions))]
 use std::process::{Command, Stdio};
@@ -30,10 +30,17 @@ impl ApplicationJob {
         self.supervisor.clone()
     }
 
-    /// Terminates every owned child. Idempotent; the job also enforces
-    /// kill-on-close when the last handle is dropped.
+    /// Terminates every owned child. Idempotent. On Windows the job itself is
+    /// kill-on-close; the explicit call makes normal shutdown deterministic on
+    /// both platforms.
     pub fn shutdown(&self) {
         let _ = self.supervisor.shutdown();
+    }
+}
+
+impl Drop for ApplicationJob {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }
 

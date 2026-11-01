@@ -1,5 +1,7 @@
 # LFM3 Local Harness
 
+> **LFM3-Harness is an independent, community-built experimental application for running and exploring Liquid AI's LFM3 models locally. This is an unofficial community project and is not affiliated with, endorsed by, or sponsored by Liquid AI.**
+
 A fully local, chat-first desktop cowork harness for Liquid AI's LFM3 model family, built with Rust, React, Tauri 2, and external llama.cpp processes.
 
 The primary surface is a conversation. You can type, attach an image, or record a voice message, and the local models can map a folder, find and summarise files, trace related files, inspect images, and propose a Markdown report or file edit. Writes and edits are shown as an exact diff and execute only after you approve them. A local decision model routes each turn, the vision model observes attached images, and LFM3-Audio-2B both transcribes speech and synthesizes spoken replies locally through `llama-tts`.
@@ -16,13 +18,15 @@ The chat surface on Windows, with the bundled llama.cpp runtime detected and all
 
 A real turn in progress: `search_files` and `list_files` output, the d1 route, the evidence gate, and the Stop control while the harness keeps working.
 
+The project site is at <https://lfm3-harness.github.io/LFM3-Harness/>.
+
 ## Current status
 
 This repository is an all-Rust harness with a working desktop application and headless CLI:
 
 - `crates/lfm3-harness` contains the engine: frozen acceptance contracts, planning, confined tools, provenance-bound deterministic checks, recovery budgets, the run coordinator, the SQLite journal, model supervision, and the chat transcript store.
 - `crates/lfm3-cli` is the `lfm3` binary with `doctor`, `missions`, `models`, `plan`, `run`, `status`, and `retry`.
-- `apps/desktop` is the Tauri 2 shell. It embeds one engine, exposes typed commands and durable events to the webview, runs the multi-model chat turn loop and approval gates, owns all child processes through a kill-on-close Windows Job Object, and ships an NSIS installer.
+- `apps/desktop` is the Tauri 2 shell. It embeds one engine, exposes typed commands and durable events to the webview, runs the multi-model chat turn loop and approval gates, owns all child processes through a kill-on-close Windows Job Object or a Linux process group, and ships an NSIS installer on Windows plus `.deb` and AppImage bundles on Linux.
 - `apps/ui` is the React/TypeScript interface. It opens on chat, shows the decision route and local model roles, accepts image attachments and voice input, reads answers aloud with the local LFM3 voice, keeps verified missions one click away, and has no selectable demo bridge in the production bundle.
 - The Python implementation, tests, caches, and Python project configuration have been removed.
 - The local models, llama.cpp binaries, demo assets, and mission definitions have been preserved.
@@ -30,7 +34,7 @@ This repository is an all-Rust harness with a working desktop application and he
 - [STEPS.md](STEPS.md) is the ordered, test-driven implementation plan. Tasks 1–18 are complete; the chat surface is Tasks 19–22, the multi-model workspace extension is Task 23, the profile-shaped job loop is Task 24, and the four-model envelope helpers are Task 25. The packaged release acceptance is recorded in [`tests/golden/release-manifest.json`](tests/golden/release-manifest.json).
 - Semantic holdout qualification has **not** been performed. Only `desk_task` has an end-to-end real-model acceptance; the three semantic missions remain `human_review_only`.
 
-The desktop application never downloads anything in the background. Weights are fetched only when a person opens **Models** in the chat header and clicks **Download** for one role, from the pinned LiquidAI repositories over HTTPS, with visible progress and a cancel button. The Tauri CLI separately fetches its own NSIS packaging tooling at **build** time, never from the installed application.
+The desktop application never downloads anything in the background. Weights are fetched only when a person opens **Models** in the chat header and clicks **Download** for one role, from the pinned LiquidAI repositories over HTTPS, with visible progress and a cancel button. The Tauri CLI separately fetches its own packaging tooling at **build** time, never from the installed application.
 
 ## Quick launch
 
@@ -49,12 +53,14 @@ The default runs `tauri dev`, which starts the Vite frontend on `127.0.0.1:1420`
 Linux:
 
 ```bash
-./run.sh               # CLI health check and the exact next command
+./run.sh deps          # Rust, Node.js, and the desktop UI modules
+./run.sh desktop       # Tauri desktop UI in development mode
+./run.sh bundle        # build .deb and .AppImage packages
 ./run.sh build         # build the production CLI for Linux
 ./run.sh run --mission desk_task --input tests/fixtures/desk_task/basic.json --workspace ./workspace
 ```
 
-`run.sh` runs the headless CLI only. The desktop shell is Windows-only because it owns children through a Windows Job Object and the bundled llama.cpp binaries are Windows x86_64. Linux requires a native llama.cpp 0.8.0 build 11960; set `LFM3_LLAMA_SERVER` to it. `LFM3_MODELS_DIR` defaults to `./models`. If the executable bit was lost in transfer, run `chmod +x run.sh` once.
+`run.sh desktop` starts the same Tauri UI on Linux. It installs Rust and a private Node.js LTS under `.tools/linux-node` when needed, and prints the exact WebKitGTK/GTK package command if the system libraries are missing. `run.sh bundle` builds `target/release/bundle/deb/*.deb` and `target/release/bundle/appimage/*.AppImage`; it needs the pinned Linux llama.cpp b11960 runtime in `tools/llama`, and prints the download command when it is absent. Install the built Debian package with `sudo apt install ./target/release/bundle/deb/*.deb`, or run the AppImage directly. The headless CLI still works without Node.js or WebKitGTK. `LFM3_MODELS_DIR` defaults to `./models`; set `LFM3_LLAMA_SERVER` to a native runtime. If the executable bit was lost in transfer, run `chmod +x run.sh` once.
 
 ## Headless usage
 
@@ -147,16 +153,26 @@ npx tauri dev
 
 Vite serves the UI on `127.0.0.1:1420`; the window is 1280×1000 with a 960×720 minimum. The cargo workspace must be on `PATH` for the Tauri CLI.
 
-Package the installer:
+Package the Windows installer:
 
 ```powershell
 cd apps/desktop
 npx tauri build --bundles nsis
 ```
 
-Installer: `target/release/bundle/nsis/LFM3 Workspace_0.1.0_x64-setup.exe`. The bundle ships `missions/` plus a pinned CPU llama.cpp runtime under `tools/llama` (`llama-server`, `llama-tts`, every CPU backend, `libomp`, and the VC++ runtime DLLs), so the installed application runs without a separate llama.cpp setup. The build stages those files with `scripts/stage-llama-runtime.mjs`; the 594 MB CUDA backend and the development tools are not included because the CPU profile starts servers with `-ngl 0`.
+Installer: `target/release/bundle/nsis/LFM3 Workspace_0.1.1_x64-setup.exe`.
 
-GGUF weights are deliberately absent from the installer, which is why it stays at about 15 MB. The only download after installation is the model weights the person requests from the **Models** menu. The installer defaults to `%LOCALAPPDATA%\LFM3 Workspace`, a path containing a space.
+Package the Linux desktop:
+
+```bash
+./run.sh bundle
+```
+
+Bundles: `target/release/bundle/deb/*.deb` and `target/release/bundle/appimage/*.AppImage`. `tauri.linux.conf.json` selects those targets. The same `scripts/stage-llama-runtime.mjs` stages the ELF binaries (`llama-server`, `llama-tts`) and `lib*.so*` on Linux; GPU backends, development tools, and weights stay out.
+
+Both desktop bundles ship `missions/` plus the pinned CPU llama.cpp runtime under `tools/llama` (`llama-server`, `llama-tts`, the CPU backends, and the platform runtime libraries: the VC++ DLLs on Windows and the ELF shared libraries on Linux), so the installed application runs without a separate llama.cpp setup. The 594 MB CUDA backend and the development tools are not included because the CPU profile starts servers with `-ngl 0`.
+
+GGUF weights are deliberately absent from the installers, which keeps each package small (about 15 MB on Windows). The only download after installation is the model weights the person requests from the **Models** menu. The Windows installer defaults to `%LOCALAPPDATA%\LFM3 Workspace`, a path containing a space; Linux uses `$XDG_DATA_HOME/LFM3Harness`, or `~/.local/share/LFM3Harness` when that variable is unset.
 
 ### Chat and voice
 
@@ -172,7 +188,7 @@ The application opens on chat. Conversations are stored in `chat.db` inside the 
 - **Small-model resilience.** The runtime accepts native streamed tool calls and a fenced ```tool JSON block when the model cannot emit a native call. Both paths use the same approval gate, so the fallback cannot bypass consent.
 - **Bounded context.** The text model is served with a 32,000-token window. Each request carries a fixed system prompt, the newest 240 messages capped at about 96,000 characters (about 24,000 tokens, leaving room for tool output and the reply), `temperature 0.3`, and at most 1,024 output tokens.
 - **Local voice input.** The browser records with `MediaRecorder`, decodes and resamples the clip to 16 kHz mono WAV, and sends it as base64 to Rust. The local audio model receives an `input_audio` content part; no audio leaves the machine. The transcript is placed in the composer for review before you send it. Voice requires both the audio GGUF and its `mmproj`; otherwise the microphone path reports that the voice model is unavailable.
-- **Local LFM3 voice output.** **Speak** and the header **Voice replies** toggle call `synthesize_speech`, which renders one answer with `llama-tts` using the same LFM3-Audio-2B weight and `mmproj` that listen. The health report exposes `voice_output.backend = "lfm3-tts"`, `model = "LFM3-Audio-2B"`, and `lfm3_tts_weights = true` when the binary and both files are present. The model card specifies the pinned b11960 runtime, `--tts-voice female|male`, and audio sampling at temperature 1.0, top-k 128, repetition penalty 1.1; this harness uses the documented defaults. A 120-second watchdog kills the owned `llama-tts` process, and the temporary WAV is removed after it is returned. Nothing is uploaded, and no voice is fetched unless the person downloads it from the Models menu. If the voice pair is incomplete, Windows falls back to the offline system voice and labels it `system-sapi`.
+- **Local LFM3 voice output.** **Speak** and the header **Voice replies** toggle call `synthesize_speech`, which renders one answer with `llama-tts` using the same LFM3-Audio-2B weight and `mmproj` that listen. The health report exposes `voice_output.backend = "lfm3-tts"`, `model = "LFM3-Audio-2B"`, and `lfm3_tts_weights = true` when the binary and both files are present. The model card specifies the pinned b11960 runtime, `--tts-voice female|male`, and audio sampling at temperature 1.0, top-k 128, repetition penalty 1.1; this harness uses the documented defaults. A 120-second watchdog kills the owned `llama-tts` process, and the temporary WAV is removed after it is returned. Nothing is uploaded, and no voice is fetched unless the person downloads it from the Models menu. If the voice pair is incomplete, Windows falls back to the offline system voice and labels it `system-sapi`; Linux has no system-voice fallback and reports the local voice as unavailable.
 - **Workspace folder selection.** The folder chip in the chat header opens the native folder picker and moves chat and job work to the chosen folder. The engine canonicalizes the path, persists it in `setup.json`, and refuses the switch while a chat turn, job, or verified run is live, so no operation changes its ground mid-flight. The chip shows the current folder and the engine's `health.workspace` is the single source of truth.
 - **Models menu.** The header **Models** button opens the catalog for all four roles. Each row reports **Loaded** (a local server holds it), **Installed** (pinned weights are on disk), or **Missing**, with its size, repository, and license. **Download** starts one role at a time, streams to a `.part` file, verifies the published byte length and SHA-256, then moves it into the models folder; progress and cancel are live. A finished download is hot-swapped into chat and jobs when they are idle, otherwise the menu offers **Load now**. Downloads require an explicit click and never start on their own.
 - **Separation from verification.** Chat messages, tool output, and approvals never satisfy a mission check, and a verified run never writes through the chat approval path. Verified work still starts from the mission forms and is judged only by frozen acceptance checks.
@@ -218,14 +234,14 @@ Caveats: these numbers describe one machine, one run, 21 router cases, and deter
 
 ### Local setup
 
-Setup discovery is read-only and happens at boot. The engine locates an explicit path first, then the usual local locations for `llama-server.exe`, `llama-tts.exe`, the GGUF directory, and the vision projector. Discovery never downloads or copies weights; the only download path is the person-initiated **Models** menu, which writes verified GGUF files into the models directory. Override discovery with:
+Setup discovery is read-only and happens at boot. The engine locates an explicit path first, then the usual local locations for `llama-server` (`llama-server.exe` on Windows), `llama-tts`, the GGUF directory, and the vision projector. Discovery never downloads or copies weights; the only download path is the person-initiated **Models** menu, which writes verified GGUF files into the models directory. Override discovery with:
 
 | Variable | Purpose |
 | --- | --- |
-| `LFM3_LLAMA_SERVER` | pinned b11960 / v0.8.0 `llama-server.exe` |
-| `LFM3_LLAMA_TTS` | local `llama-tts.exe` |
+| `LFM3_LLAMA_SERVER` | pinned b11960 / v0.8.0 `llama-server` (`llama-server.exe` on Windows) |
+| `LFM3_LLAMA_TTS` | local `llama-tts` (`llama-tts.exe` on Windows) |
 | `LFM3_MODELS_DIR` | directory containing the GGUF weights |
-| `LFM3_DATA_DIR` | trusted harness state (default `%LOCALAPPDATA%\LFM3Harness`) |
+| `LFM3_DATA_DIR` | trusted harness state (Windows: `%LOCALAPPDATA%\LFM3Harness`; Linux: `$XDG_DATA_HOME/LFM3Harness` or `~/.local/share/LFM3Harness`) |
 | `POSTHOG_API_KEY` | opt-in PostHog AI tracing of local model calls (empty = off) |
 
 or write `setup.json` into the data directory using absolute paths:
@@ -240,7 +256,7 @@ or write `setup.json` into the data directory using absolute paths:
 }
 ```
 
-Every supplied path must be absolute and present; a malformed file is reported and left untouched. `workspace` is written by the chat header folder picker and overrides the default workspace folder; `LFM3_WORKSPACE` still takes precedence when it is set. The health report lists every missing item and the resolved `workspace` and `models_dir`. The runtime must report build `11960` and release `0.8.0` to be accepted as pinned; the UI shows `verified pin` only in that case.
+The example above uses Windows paths; on Linux use absolute paths such as `/home/you/lfm3/tools/llama/llama-server`. Every supplied path must be absolute and present; a malformed file is reported and left untouched. `workspace` is written by the chat header folder picker and overrides the default workspace folder; `LFM3_WORKSPACE` still takes precedence when it is set. The health report lists every missing item and the resolved `workspace` and `models_dir`. The runtime must report build `11960` and release `0.8.0` to be accepted as pinned; the UI shows `verified pin` only in that case.
 
 ### Installed smoke acceptance
 
@@ -331,7 +347,7 @@ The real pinned text model passes the frozen `desk_task` acceptance contract. Th
 | --- | --- |
 | Model | `LFM3-1.7B-Q4_K_M.gguf` |
 | Model SHA-256 | `3793e1e6e2266919d6e015287221b41100175a98eddaba92e111aed3b05c93c4` |
-| llama.cpp | b11960 / v0.8.0-dev, commit `8642541b2`, `tools/llama/llama-server.exe` |
+| llama.cpp | b11960 / v0.8.0-dev, commit `8642541b2`, `tools/llama/llama-server.exe` (Windows measurement) |
 | Acceptance SHA-256 | `f7ed5f17bda3c957797569028aab3e375b42998cbf65d489bdc7a9e8e7b6aba5` |
 | Steps / attempts | 1 step, 1 attempt, all checks pass |
 | Wall time | 5.99 s whole CLI case, including model startup |
@@ -406,18 +422,33 @@ The inference backend remains **llama.cpp b11960 / v0.8.0**. Using Rust does not
 
 ## Stack
 
-- Rust stable with the MSVC toolchain.
+- Rust stable with the MSVC toolchain on Windows and the GNU toolchain on Linux.
 - Tokio, Serde, Reqwest, Rusqlite, SHA-256, and typed local workers.
-- Tauri 2 for the native desktop boundary and Windows Job Object supervision.
+- Tauri 2 for the native desktop boundary, with Windows Job Object and Linux process-group supervision.
 - React 19, TypeScript 5.9, and Vite 8 for the UI; Vitest and Playwright for UI acceptance.
 - External llama.cpp for inference; no Rust FFI and no llama.cpp version change.
 
 ## Repository status details
 
-Legacy Python runtime data under `.lfm3/`, if present, is not used by the Rust application and is not automatically migrated. New trusted state lives under `%LOCALAPPDATA%\LFM3Harness`.
+Legacy Python runtime data under `.lfm3/`, if present, is not used by the Rust application and is not automatically migrated. New trusted state lives under `%LOCALAPPDATA%\LFM3Harness` on Windows and `$XDG_DATA_HOME/LFM3Harness` (or `~/.local/share/LFM3Harness`) on Linux.
 
 The first release ships the chat surface plus four verified missions. The verified path is accepted end-to-end for `desk_task` with the real LFM3 text model. `screen_qa`, `voice_intake`, and `doc_extract` remain `human_review_only` until a frozen semantic holdout is evaluated with the real models. Chat is available but is not part of that acceptance record.
 
-The release scope audit found no Python source, project files, caches, or launch commands; no remote model endpoints, shell plugin, broad filesystem capability, or unguarded scripted fallback. The single outbound path is the explicit **Models** download command, pinned to `huggingface.co/LiquidAI` with fixed file names, byte lengths, and SHA-256 digests; setup discovery and boot never contact the network. The installed tree contains `lfm3-desktop.exe`, `uninstall.exe`, the four mission files, and the bundled CPU llama.cpp runtime, and no GGUF weights. The production UI bundle contains no `DemoBridge` symbol.
+The release scope audit found no Python source, project files, caches, or launch commands; no remote model endpoints, shell plugin, broad filesystem capability, or unguarded scripted fallback. The single outbound path is the explicit **Models** download command, pinned to `huggingface.co/LiquidAI` with fixed file names, byte lengths, and SHA-256 digests; setup discovery and boot never contact the network. On Windows the installed tree contains `lfm3-desktop.exe`, `uninstall.exe`, the four mission files, and the bundled CPU llama.cpp runtime, and no GGUF weights. The Linux `.deb` installs `lfm3-desktop` with the same missions and runtime resources; the `.AppImage` carries them in its image. The production UI bundle contains no `DemoBridge` symbol.
 
 Known gaps for the next task: qualify decision routing, folder search, related-file discovery, report writing, native streamed tool calls, the fenced-call fallback, cancellation, and approval expiry with the real text and decision models; qualify vision attachments with the real VL model and projector; qualify voice transcription with the real audio model and `mmproj`; exercise the LFM3 speech-output path end-to-end in the desktop app (llama-tts itself was verified directly on this machine); perform the semantic holdout qualification and decide whether to enable automatic semantic passing; exercise replanning with the real model (it is verified only by automated tests today); and either wire `limits.max_tokens` into executor/planner requests or remove it from the configuration surface, since the executor currently uses its built-in 512-token cap and the planner a fixed 1536.
+
+## License
+
+The source in this repository is licensed under the **MIT License**, recorded in [`LICENSE`](LICENSE) and declared as `license = "MIT"` in `[workspace.package]` in [`Cargo.toml`](Cargo.toml); the crates and the desktop shell inherit that workspace value. Nothing in that license covers the model weights or the third-party binaries the installers bundle, and this project is not affiliated with, endorsed by, or sponsored by Liquid AI — see the notice at the top of this file.
+
+| What you get | Where it comes from | Terms |
+| --- | --- | --- |
+| Application source, mission JSON, benchmark scripts, docs | this repository | MIT, in [`LICENSE`](LICENSE) |
+| LFM3 and d1 GGUF weights, and their `mmproj` files | not in any package; you download them from the **Models** menu, pinned to `huggingface.co/LiquidAI` and verified by byte length and SHA-256 | each model's own terms on its Liquid AI model card, shown in the app as *LFM Open License (see the model card)* (`apps/desktop/src-tauri/src/downloads.rs`). Downloading does not relicense them, and this repository neither ships nor sublicenses them |
+| llama.cpp CPU runtime (`llama-server`, `llama-tts`, the `ggml*` libraries) | bundled into the installers, staged locally by [`scripts/stage-llama-runtime.mjs`](scripts/stage-llama-runtime.mjs) — the staging step makes no network calls, and `RUNTIME.txt` in the bundle lists every staged file and the pinned build | llama.cpp is MIT, pinned at b11960 / v0.8.0. A Linux bundle copies llama.cpp's own `LICENSE` when the upstream archive provides it; the Windows bundle carries `LICENSE-LLVM-OpenMP` and the `RUNTIME.txt` note, and the full upstream text stays available at the pinned commit |
+| OpenMP runtime (`libomp.dll`, or the `libomp` shared object) | staged with the runtime as `tools/llama/LICENSE-LLVM-OpenMP` | Apache License 2.0 with LLVM Exceptions |
+| `vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll` | copied from the locally installed Microsoft Visual C++ runtime, on Windows only | Microsoft's redistributable terms; these are not MIT-licensed and are not this project's code |
+| Rust crates and npm packages | `Cargo.lock` and the two `package.json` files | each dependency's own license; the CUDA backend is excluded from every bundle, so no NVIDIA code ships |
+
+Because the weights are downloaded separately, an installed copy is not one license but several: MIT for this code, the model card's terms for whatever you fetched, and the upstream licenses listed above for the runtime files that came with the installer.

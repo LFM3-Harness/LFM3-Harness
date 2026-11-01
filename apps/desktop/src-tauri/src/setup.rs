@@ -214,6 +214,7 @@ pub fn inspect(settings: &SetupSettings) -> SetupReport {
 /// Runs the pinned binary's read-only `--version` probe.
 pub fn probe_server(executable: &Path) -> Result<ServerProbe, String> {
     let mut command = Command::new(executable);
+    lfm3_harness::configure_runtime_environment(&mut command, executable);
     command.arg("--version");
     #[cfg(windows)]
     {

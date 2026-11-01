@@ -1,6 +1,6 @@
 // Hide the console window in release builds; the engine logs to the app's
 // tracing subscriber instead.
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 fn main() {
     // Installed-acceptance probes run the same embedded engine without a

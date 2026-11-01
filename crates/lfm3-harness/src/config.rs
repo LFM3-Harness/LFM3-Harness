@@ -332,10 +332,28 @@ fn default_url(raw: &str) -> Url {
 }
 
 fn default_data_dir() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("LFM3Harness")
+    #[cfg(windows)]
+    {
+        let base = std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("USERPROFILE")
+                    .map(|home| PathBuf::from(home).join("AppData").join("Local"))
+            })
+            .unwrap_or_else(std::env::temp_dir);
+        return base.join("LFM3Harness");
+    }
+    #[cfg(not(windows))]
+    {
+        let base = std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .map(|home| PathBuf::from(home).join(".local").join("share"))
+            })
+            .unwrap_or_else(std::env::temp_dir);
+        base.join("LFM3Harness")
+    }
 }
 
 fn invalid(message: impl Into<String>) -> HarnessError {

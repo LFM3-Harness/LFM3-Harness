@@ -24,6 +24,7 @@ pub fn run() {
     init_tracing();
     tauri::Builder::default()
         .setup(|app| {
+            seed_bundled_runtime(app.handle());
             let missions = resolve_missions(app.handle());
             let engine = tauri::async_runtime::block_on(engine::Engine::boot(&missions))
                 .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
@@ -89,6 +90,37 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to run the LFM3 desktop shell");
+}
+
+/// Points runtime discovery at the binaries bundled with the installer.
+///
+/// Discovery by walking up from the executable works on Windows, where
+/// resources sit beside the app. Linux deb and AppImage installs keep them
+/// under the Tauri resource directory instead, so seed the explicit overrides
+/// before the engine reads its configuration. A value the user already set is
+/// never replaced.
+fn seed_bundled_runtime(app: &tauri::AppHandle) {
+    let Ok(resource) = app.path().resource_dir() else {
+        return;
+    };
+    let tools = resource.join("tools").join("llama");
+    for (key, stem) in [
+        ("LFM3_LLAMA_SERVER", "llama-server"),
+        ("LFM3_LLAMA_TTS", "llama-tts"),
+    ] {
+        if std::env::var_os(key).is_some() {
+            continue;
+        }
+        let name = if cfg!(windows) {
+            format!("{stem}.exe")
+        } else {
+            stem.to_owned()
+        };
+        let candidate = tools.join(name);
+        if candidate.is_file() {
+            std::env::set_var(key, candidate);
+        }
+    }
 }
 
 fn init_tracing() {

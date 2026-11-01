@@ -1,0 +1,278 @@
+name: Release
+
+# Builds every shipping artifact from one tag and publishes them together:
+#   - Windows x64 NSIS installer
+#   - Linux x64 .deb and .AppImage
+#   - Linux x64 headless CLI archive
+# The release body is docs/releases/<tag>.md with a generated checksum table
+# appended, so the published digests always match the uploaded files.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (for example v0.1.1)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  LLAMA_REF: b11960
+
+jobs:
+  windows-desktop:
+    name: Build Windows installer
+    runs-on: windows-latest
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Download pinned llama.cpp Windows runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest -UseBasicParsing `
+            -Uri "https://github.com/ggml-org/llama.cpp/releases/download/$env:LLAMA_REF/llama-$env:LLAMA_REF-bin-win-cpu-x64.zip" `
+            -OutFile llama.zip
+          Expand-Archive llama.zip -DestinationPath llama
+          $server = Get-ChildItem llama -Recurse -Filter llama-server.exe | Select-Object -First 1
+          if (-not $server) { throw "llama-server.exe is missing from the llama.cpp archive" }
+          New-Item -ItemType Directory -Force tools/llama | Out-Null
+          Copy-Item (Join-Path $server.DirectoryName "*") tools/llama -Recurse -Force
+          Get-ChildItem tools/llama | Select-Object -First 5 Name
+
+      - name: Install frontend dependencies
+        run: |
+          npm --prefix apps/ui ci
+          npm --prefix apps/desktop ci
+
+      - name: Test the harness and Windows process containment
+        run: |
+          cargo test -p lfm3-harness --lib
+          cargo test -p lfm3-desktop --test job_lifecycle
+
+      - name: Build the NSIS installer
+        run: npm --prefix apps/desktop run build
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+  linux-desktop:
+    name: Build Linux desktop packages
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install WebKitGTK and Tauri build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libfuse2t64
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: |
+          npm --prefix apps/ui ci
+          npm --prefix apps/desktop ci
+
+      - name: Download pinned llama.cpp Linux runtime
+        run: |
+          curl -L --fail --retry 3 \
+            -o "/tmp/llama-$LLAMA_REF-bin-ubuntu-x64.tar.gz" \
+            "https://github.com/ggml-org/llama.cpp/releases/download/$LLAMA_REF/llama-$LLAMA_REF-bin-ubuntu-x64.tar.gz"
+          mkdir -p /tmp/llama tools/llama
+          tar -xzf "/tmp/llama-$LLAMA_REF-bin-ubuntu-x64.tar.gz" -C /tmp/llama
+          cp -a "/tmp/llama/llama-$LLAMA_REF/." tools/llama/
+          ls tools/llama | head -5
+
+      - name: Test the harness and Linux process containment
+        run: |
+          cargo test -p lfm3-harness --lib
+          cargo test -p lfm3-desktop --test job_lifecycle_unix
+
+      - name: Build the .deb and AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          NO_STRIP: "true"
+        run: npm --prefix apps/desktop run build
+
+      - name: Upload Linux desktop packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-desktop
+          path: |
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+  linux-cli:
+    name: Build Linux headless CLI
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build headless CLI
+        run: cargo build -p lfm3-cli --release --no-default-features
+
+      - name: Download pinned llama.cpp Linux runtime
+        run: |
+          curl -L --fail --retry 3 \
+            -o "/tmp/llama-$LLAMA_REF-bin-ubuntu-x64.tar.gz" \
+            "https://github.com/ggml-org/llama.cpp/releases/download/$LLAMA_REF/llama-$LLAMA_REF-bin-ubuntu-x64.tar.gz"
+          mkdir -p /tmp/llama
+          tar -xzf "/tmp/llama-$LLAMA_REF-bin-ubuntu-x64.tar.gz" -C /tmp/llama
+
+      - name: Assemble CLI release
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          PKG="LFM3-Workspace-linux-x64"
+          rm -rf dist
+          mkdir -p "dist/$PKG/tools/llama" "dist/$PKG/missions"
+
+          cp target/release/lfm3-cli "dist/$PKG/"
+          cp missions/*.json "dist/$PKG/missions/"
+          cp -a "/tmp/llama/llama-$LLAMA_REF/llama-server" \
+            "/tmp/llama/llama-$LLAMA_REF/llama-tts" \
+            "dist/$PKG/tools/llama/"
+          find "/tmp/llama/llama-$LLAMA_REF" -maxdepth 1 -name 'lib*.so*' \
+            ! -name '*cuda*' ! -name '*vulkan*' ! -name '*rocm*' ! -name '*hip*' \
+            -exec cp -a {} "dist/$PKG/tools/llama/" \;
+          cp -a run.sh "dist/$PKG/"
+          chmod +x "dist/$PKG/run.sh" "dist/$PKG/lfm3-cli" "dist/$PKG/tools/llama/llama-server" "dist/$PKG/tools/llama/llama-tts"
+
+          cat > "dist/$PKG/RUNTIME.txt" <<EOF
+          LFM3 Workspace bundled llama.cpp runtime
+
+          llama.cpp $LLAMA_REF (CPU profile, -ngl 0), linux-x64
+          Includes llama-server, llama-tts, and the CPU shared libraries.
+          The CUDA backend and all GGUF model weights are deliberately excluded.
+          EOF
+
+          tar -C dist -czf /tmp/lfm3-cli.tar.gz "$PKG"
+          mv /tmp/lfm3-cli.tar.gz "dist/LFM3-Workspace_${VERSION}_linux-x64_cli.tar.gz"
+          ls -lh dist/*.tar.gz
+
+      - name: Upload CLI archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-cli
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: [windows-desktop, linux-desktop, linux-cli]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Collect assets
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Verify every expected asset is present
+        run: |
+          set -euo pipefail
+          ls -l dist
+          test -n "$(find dist -maxdepth 1 -name '*setup.exe')"
+          test -n "$(find dist -maxdepth 1 -name '*.deb')"
+          test -n "$(find dist -maxdepth 1 -name '*.AppImage')"
+          test -n "$(find dist -maxdepth 1 -name '*_cli.tar.gz')"
+
+      - name: Write the release body with generated checksums
+        run: |
+          set -euo pipefail
+          NOTES="docs/releases/${TAG}.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "missing release notes at $NOTES" >&2
+            exit 1
+          fi
+          cp "$NOTES" release-body.md
+          printf '\n' >> release-body.md
+          printf '| Asset | Size | SHA-256 |\n| --- | --- | --- |\n' >> release-body.md
+          find dist -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' file; do
+                name=$(basename "$file")
+                size=$(stat -c%s "$file")
+                human=$(numfmt --to=iec --suffix=B "$size")
+                hash=$(sha256sum "$file" | cut -d' ' -f1)
+                printf '| `%s` | %s (%s bytes) | `%s` |\n' "$name" "$human" "$size" "$hash" >> release-body.md
+              done
+          ( cd dist && find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -printf '%f\0' \
+              | sort -z | xargs -0 sha256sum ) > dist/SHA256SUMS.txt
+          cat dist/SHA256SUMS.txt
+          tail -8 release-body.md
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "LFM3 Workspace $TAG" --notes-file release-body.md
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "LFM3 Workspace $TAG" --notes-file release-body.md
+          fi
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets \
+            --jq '{url, assets: [.assets[] | {name, size}]}'

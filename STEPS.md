@@ -6,13 +6,15 @@
 
 **Architecture:** The `lfm3-harness` Rust crate owns planning, execution, verification, persistence, recovery, local model management, and the durable chat transcript. The Tauri application embeds that crate and adds the chat turn loop, approval waits, typed commands/events, and the chat-first UI. The `lfm3-cli` binary uses the same crate headlessly. No Python, production HTTP engine, sidecar, or llama.cpp FFI is used.
 
-**Tech Stack:** Stable Rust MSVC, Tokio, Serde, Reqwest (streaming), Rusqlite, Tauri 2, React, TypeScript, Vite, Playwright, llama.cpp b11960 / v0.8.0.
+**Tech Stack:** Stable Rust (MSVC on Windows, GNU on Linux), Tokio, Serde, Reqwest (streaming), Rusqlite, Tauri 2, React, TypeScript, Vite, Playwright, llama.cpp b11960 / v0.8.0.
 
 **Spec:** `PLAN.md`
 
+> **Platform update (post-plan):** Linux x86_64 desktop support was added after Task 18. The Tauri UI now builds as `.deb` and `.AppImage`, uses Linux process groups instead of a Windows Job Object, stores state under XDG paths, and ships the Linux llama.cpp runtime. The Windows-first steps below are the historical implementation order; see `README.md` and `docs/releases/v0.1.0.md` for the current cross-platform commands.
+
 ## Global Constraints
 
-- Windows 11 is the first target; use stable Rust with the MSVC toolchain.
+- Windows 11 and Linux x86_64 are the desktop targets; use stable Rust with the MSVC toolchain on Windows and the GNU toolchain on Linux.
 - llama.cpp remains pinned to b11960 / v0.8.0 until every model fixture qualifies a newer build.
 - Packaged model endpoints must resolve to `127.0.0.1` or `::1`.
 - Chat opens by default and never counts as verified work; only frozen mission checks may pass a run.
@@ -24,7 +26,7 @@
 - Replanning changes `ExecutionStrategy` only. `AcceptanceSpec` and its hash are immutable.
 - A run passes only after all frozen step checks and final mission verification pass with typed evidence.
 - Cancellation propagates through every model, tool, approval, chat turn, and child-process call.
-- Trusted state lives under `%LOCALAPPDATA%\LFM3Harness`, not inside a mutable workspace.
+- Trusted state lives under `%LOCALAPPDATA%\LFM3Harness` on Windows and `$XDG_DATA_HOME/LFM3Harness` (or `~/.local/share/LFM3Harness`) on Linux, not inside a mutable workspace.
 - The current directory has no git repository. Do not create commits unless the user separately initializes version control and requests commits.
 - Complete tasks in order. Do not start React before Task 11 passes with the real text model.
 
@@ -702,11 +704,11 @@ Expected: all engine and command tests pass.
 
 ---
 
-### Task 16: Windows Job Object integration, setup, and installer
+### Task 16: Desktop process containment, setup, and installers
 
 **Files:**
-- Create: `apps/desktop/src-tauri/src/job_windows.rs`, `apps/desktop/src-tauri/src/setup.rs`
-- Create: `scripts/smoke.ps1`
+- Create: `apps/desktop/src-tauri/src/job_windows.rs`, `apps/desktop/src-tauri/src/setup.rs`, `crates/lfm3-harness/src/supervisor/unix.rs`
+- Create: `apps/desktop/src-tauri/tauri.linux.conf.json`, `scripts/smoke.ps1`
 - Modify: `apps/desktop/src-tauri/tauri.conf.json`, `README.md`
 
 **Interfaces:**
@@ -718,12 +720,12 @@ Cover normal exit, cancel during inference, engine error, forced application ter
 
 - [ ] **Step 2: Build the NSIS application**
 
-Run: `npx tauri build` from `apps/desktop`  
-Expected: installer builds without Python, downloads, or repository-relative resource assumptions.
+Run: `npm --prefix apps/desktop run build` from the repository root  
+Expected: the NSIS installer builds on Windows and the `.deb`/`.AppImage` packages build on Linux, without Python, downloads, or repository-relative resource assumptions.
 
 - [ ] **Step 3: Implement first-run local setup and job supervision**
 
-Setup locates or asks for `llama-server.exe`, `llama-tts.exe`, GGUF directories, and projectors. It performs read-only probes and never auto-downloads missing weights. All owned inference/tool children join the kill-on-close job.
+Setup locates or asks for `llama-server` (`llama-server.exe` on Windows), `llama-tts`, GGUF directories, and projectors. It performs read-only probes and never auto-downloads missing weights. All owned inference/tool children join the kill-on-close Job Object on Windows or their own process group on Linux.
 
 - [ ] **Step 4: Run installed-application smoke acceptance**
 

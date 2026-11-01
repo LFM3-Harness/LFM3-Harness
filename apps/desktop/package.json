@@ -1,7 +1,7 @@
 {
   "name": "lfm3-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Tauri 2 shell for the local LFM3 harness",
   "scripts": {
     "tauri": "tauri",

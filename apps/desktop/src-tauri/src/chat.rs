@@ -1199,6 +1199,7 @@ fn synthesize_lfm3(
     let output = directory.join("speech.wav");
     let result = (|| {
         let mut command = Command::new(executable);
+        lfm3_harness::configure_runtime_environment(&mut command, executable);
         command
             .arg("-m")
             .arg(weight)

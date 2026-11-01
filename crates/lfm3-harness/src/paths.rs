@@ -227,8 +227,13 @@ mod tests {
     fn absolute_paths_outside_the_workspace_stay_rejected() {
         let directory = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(directory.path()).unwrap();
+        let outside = if cfg!(windows) {
+            "C:\\Windows\\system.ini"
+        } else {
+            "/etc/passwd"
+        };
         assert!(matches!(
-            resolve(&root, "C:\\Windows\\system.ini", Mode::Read),
+            resolve(&root, outside, Mode::Read),
             Err(super::PathError::Outside)
         ));
     }

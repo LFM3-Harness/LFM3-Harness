@@ -16,6 +16,7 @@ pub(crate) fn spawn(
         ));
     }
     let mut command = std::process::Command::new(&launch.executable);
+    crate::configure_runtime_environment(&mut command, &launch.executable);
     command
         .args(&launch.args)
         .stdin(Stdio::null())

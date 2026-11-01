@@ -12,6 +12,7 @@ pub mod mission;
 pub mod model;
 pub mod observability;
 pub(crate) mod paths;
+pub mod runtime;
 pub mod store;
 pub mod supervisor;
 pub mod task;
@@ -47,6 +48,7 @@ pub use model::{
     ModelLease, ModelManager, ModelManagerConfig, ModelSpec, ResponseFormat, ToolCall,
     ToolDefinition, TranscribeRequest, Transcript,
 };
+pub use runtime::configure_runtime_environment;
 pub use store::{
     sha256_hex, AttemptSnapshot, AttemptStatus, FinishAttempt, FinishedAttempt, Reconciliation,
     RunEvent, RunRecord, RunStatus, Snapshot, StartAttempt, StepSnapshot, StepStatus, Store,

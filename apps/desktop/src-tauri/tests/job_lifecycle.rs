@@ -1,3 +1,4 @@
+#![cfg(windows)]
 //! Packaged lifecycle: the application job owns exactly the processes the
 //! harness starts. Normal shutdown and abrupt termination must leave no owned
 //! child behind, while externally started processes survive.
