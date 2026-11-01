@@ -7,6 +7,8 @@ const MAX_SECONDS = 120;
 export function Composer({
   disabled,
   running,
+  rows = 3,
+  placeholder = 'Ask anything, or describe what you’d like done…',
   onSend,
   onStop,
   onTranscribe,
@@ -15,6 +17,8 @@ export function Composer({
 }: {
   disabled: boolean;
   running: boolean;
+  rows?: number;
+  placeholder?: string;
   onSend: (text: string) => void;
   onStop: () => void;
   onTranscribe: (base64: string, format: string) => Promise<string>;
@@ -142,8 +146,8 @@ export function Composer({
       <textarea
         ref={textareaRef}
         value={text}
-        rows={3}
-        placeholder="Ask anything, or describe what you’d like done…"
+        rows={rows}
+        placeholder={placeholder}
         disabled={disabled || transcribing || attaching}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
@@ -183,40 +187,82 @@ export function Composer({
             disabled={running || transcribing || attaching}
             onClick={() => fileRef.current?.click()}
           >
-            Image
+            <span className="attach-plus" aria-hidden="true">
+              ＋
+            </span>
+            <span className="attach-label">Image</span>
           </button>
+          {recording ? <span className="record-dot" aria-hidden="true" /> : null}
           {recording ? (
-            <span className="record-dot" aria-hidden="true" />
-          ) : null}
-          {micAvailable ? (
             <button
               type="button"
-              className={`icon-button ${recording ? 'recording' : ''}`}
-              aria-label={recording ? 'Stop recording' : 'Record a voice message'}
-              title={recording ? 'Stop recording' : 'Record a voice message'}
-              disabled={running || transcribing}
+              className="icon-button recording stop-mic-button"
+              aria-label="Stop recording"
+              title="Stop recording"
               onClick={() => void toggleRecording()}
             >
-              {recording ? '■' : '🎙'}
+              <span className="record-square" aria-hidden="true" />
             </button>
-          ) : null}
-          {running ? (
-            <button type="button" className="danger" onClick={onStop}>
-              Stop
+          ) : running ? (
+            <button type="button" className="danger stop-button" onClick={onStop}>
+              <span className="stop-label">Stop</span>
+              <span className="stop-square" aria-hidden="true" />
+            </button>
+          ) : text.trim().length > 0 ? (
+            <button
+              type="button"
+              className="primary send-button"
+              aria-label="Send"
+              disabled={disabled || transcribing || attaching}
+              onClick={submit}
+            >
+              <span className="send-label">Send</span>
+              <span className="send-arrow" aria-hidden="true">
+                ↑
+              </span>
+            </button>
+          ) : micAvailable ? (
+            <button
+              type="button"
+              className="icon-button mic-button"
+              aria-label="Record a voice message"
+              title="Record a voice message"
+              disabled={transcribing}
+              onClick={() => void toggleRecording()}
+            >
+              <MicIcon />
             </button>
           ) : (
             <button
               type="button"
-              className="primary"
-              disabled={disabled || transcribing || attaching || text.trim().length === 0}
+              className="primary send-button"
+              aria-label="Send"
+              disabled
               onClick={submit}
             >
-              Send
+              <span className="send-label">Send</span>
+              <span className="send-arrow" aria-hidden="true">
+                ↑
+              </span>
             </button>
           )}
         </div>
       </div>
     </section>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
+      <rect x="7" y="2.4" width="6" height="9.2" rx="3" fill="currentColor" />
+      <path
+        d="M4.4 9.4a5.6 5.6 0 0 0 11.2 0M10 15v2.4M7.5 17.4h5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

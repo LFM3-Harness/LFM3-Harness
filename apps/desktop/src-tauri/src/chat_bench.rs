@@ -123,7 +123,7 @@ async fn benchmark(cases_path: &Path, output_path: &Path) -> Result<(), String> 
         .await
         .map_err(|error| format!("boot engine: {error}"))?;
     let chat = engine.chat();
-    let workspace = chat.workspace().to_path_buf();
+    let workspace = chat.workspace();
     fs::create_dir_all(workspace.join("assets"))
         .map_err(|error| format!("create asset folder: {error}"))?;
 
@@ -135,7 +135,7 @@ async fn benchmark(cases_path: &Path, output_path: &Path) -> Result<(), String> 
         let heuristic = ChatRoute::heuristic(&case.prompt);
         let cancel = CancellationContext::new(ROUTE_TIMEOUT);
         let started_at = Instant::now();
-        let route = route_request(models, &case.prompt, &cancel.child()).await;
+        let route = route_request(&models, &case.prompt, &cancel.child()).await;
         let _ = writeln_stderr(&format!(
             "router {} heuristic={} final={} source={:?} {}ms",
             case.id,
@@ -238,7 +238,7 @@ async fn benchmark(cases_path: &Path, output_path: &Path) -> Result<(), String> 
         record["prompt_sent"] = Value::String(prompt);
         record["attachment"] = attachment;
         let _ = writeln_stderr(&format!(
-            "chat {} route={} tools={} approvals={} {}ms ok={}",
+            "chat {} route={} tools={} approvals={} gates={} {}ms ok={}",
             case.id,
             record["route"]["intent"].as_str().unwrap_or("-"),
             record["tool_messages"]
@@ -246,6 +246,10 @@ async fn benchmark(cases_path: &Path, output_path: &Path) -> Result<(), String> 
                 .map(|items| items.len())
                 .unwrap_or(0),
             record["actions"]
+                .as_array()
+                .map(|items| items.len())
+                .unwrap_or(0),
+            record["decisions"]
                 .as_array()
                 .map(|items| items.len())
                 .unwrap_or(0),
@@ -344,6 +348,7 @@ async fn run_chat_case(
     let mut assistant_messages = Vec::new();
     let mut tool_messages = Vec::new();
     let mut actions = Vec::new();
+    let mut decisions = Vec::new();
     let mut errors = Vec::new();
     let mut final_content = String::new();
     let mut unscripted_action = false;
@@ -375,6 +380,9 @@ async fn run_chat_case(
                         route = serde_json::to_value(value).unwrap_or(Value::Null);
                     }
                     ChatEvent::Status { state, .. } => statuses.push(state),
+                    ChatEvent::Decision { decision } => {
+                        decisions.push(serde_json::to_value(decision).unwrap_or(Value::Null));
+                    }
                     ChatEvent::AssistantDelta { .. } => deltas += 1,
                     ChatEvent::AssistantDone { message } => {
                         final_content = message.content.clone();
@@ -467,6 +475,7 @@ async fn run_chat_case(
         "assistant_contents": assistant_messages.iter().filter_map(|message| message["content"].as_str()).collect::<Vec<_>>(),
         "tool_messages": tool_messages,
         "actions": actions,
+        "decisions": decisions,
         "errors": errors,
         "unscripted_action": unscripted_action,
         "final": final_content,

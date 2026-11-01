@@ -2173,11 +2173,14 @@ name = "lfm3-desktop"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "futures-util",
  "lfm3-harness",
  "open",
+ "reqwest 0.12.28",
  "rfd",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tempfile",

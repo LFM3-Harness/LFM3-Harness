@@ -10,6 +10,7 @@ pub mod ids;
 pub mod job;
 pub mod mission;
 pub mod model;
+pub mod observability;
 pub(crate) mod paths;
 pub mod store;
 pub mod supervisor;
@@ -25,7 +26,8 @@ pub use agent::{
 pub use cancel::{CancelReason, CancellationChild, CancellationContext, Cancelled};
 pub use chat::{
     ChatActionRecord, ChatCapabilities, ChatIntent, ChatMessageRecord, ChatRoute, ChatSession,
-    ChatSessionView, ChatStore, RouteRole, RouteSource,
+    ChatSessionView, ChatStore, DecisionBackend, DecisionOutcome, DecisionPoint, HarnessDecision,
+    RouteRole, RouteSource, EVIDENCE_GATE_FLOOR_BPS, WRITE_GATE_FLOOR_BPS,
 };
 pub use config::{is_loopback, Config, Limits, LlamaPaths, Profile};
 pub use coordinator::{CoordinatorError, RunCoordinator};

@@ -7,7 +7,7 @@
 
 use std::{
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
 
@@ -43,7 +43,7 @@ struct ActiveJob {
 
 struct Inner {
     store: JobStore,
-    workspace: PathBuf,
+    workspace: RwLock<PathBuf>,
     emitter: Mutex<JobEmitter>,
     active: AsyncMutex<Option<ActiveJob>>,
 }
@@ -70,7 +70,7 @@ impl JobRuntime {
         Ok(Self {
             inner: Arc::new(Inner {
                 store,
-                workspace,
+                workspace: RwLock::new(workspace),
                 emitter: Mutex::new(Arc::new(|_| {})),
                 active: AsyncMutex::new(None),
             }),
@@ -86,6 +86,30 @@ impl JobRuntime {
     #[must_use]
     pub fn store(&self) -> &JobStore {
         &self.inner.store
+    }
+
+    #[must_use]
+    pub fn workspace(&self) -> PathBuf {
+        self.inner
+            .workspace
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// Points the next job at a different folder. A job already running keeps
+    /// the folder it started with.
+    pub fn set_workspace(&self, path: PathBuf) {
+        *self
+            .inner
+            .workspace
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = path;
+    }
+
+    #[must_use]
+    pub async fn is_busy(&self) -> bool {
+        self.inner.active.lock().await.is_some()
     }
 
     pub fn view(&self, job_id: &str) -> Result<JobView, EngineError> {
@@ -202,6 +226,12 @@ impl Inner {
         request: JobRequest,
         cancel: CancellationContext,
     ) {
+        // The job acts only in the folder it was started in.
+        let workspace = self
+            .workspace
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         let runner = AgentLoop::new(gateway, Arc::new(registry), model.clone())
             .with_options(LFM3_TEXT.loop_options(request.max_turns))
             .with_max_tokens(LFM3_TEXT.max_output_tokens);
@@ -236,7 +266,7 @@ impl Inner {
             .run(
                 &request.goal,
                 request.deliverable.as_deref(),
-                &self.workspace,
+                &workspace,
                 &cancel,
                 &mut sink,
             )

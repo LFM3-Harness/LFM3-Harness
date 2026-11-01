@@ -8,6 +8,7 @@
 pub mod chat;
 pub mod chat_bench;
 pub mod commands;
+pub mod downloads;
 pub mod engine;
 pub mod events;
 pub mod job_windows;
@@ -67,6 +68,11 @@ pub fn run() {
             commands::retry_run,
             commands::list_models,
             commands::release_model,
+            commands::choose_workspace,
+            commands::model_catalog,
+            commands::download_model,
+            commands::cancel_download,
+            commands::reload_models,
             commands::choose_input_files,
             commands::open_artifact,
             commands::list_chat_sessions,

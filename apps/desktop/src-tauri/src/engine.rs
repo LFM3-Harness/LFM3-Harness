@@ -8,7 +8,10 @@ use std::{
     collections::{BTreeMap, HashMap},
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, RwLock,
+    },
     time::{Duration, Instant},
 };
 
@@ -32,6 +35,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     chat::{ChatRuntime, SpeechConfig},
+    downloads::{self, DownloadError, DownloadEvent, DownloadManager},
     job_windows::ApplicationJob,
     jobs::{JobRequest, JobRuntime},
     setup::{self, SetupSettings},
@@ -51,6 +55,8 @@ pub enum EngineError {
     Model(#[from] ModelError),
     #[error(transparent)]
     Tool(#[from] lfm3_harness::ToolError),
+    #[error(transparent)]
+    Download(#[from] DownloadError),
     #[error("{0}")]
     Setup(String),
     #[error("{0}")]
@@ -84,19 +90,81 @@ pub struct LlamaRuntime {
     pub error: Option<String>,
 }
 
+/// Installed weights discovered inside the models folder.
+///
+/// A role is only usable when every file it needs is present, so vision and
+/// audio require their projector as well as their weight.
+#[derive(Clone, Debug, Default)]
+struct InstalledWeights {
+    text: Option<PathBuf>,
+    vision: Option<PathBuf>,
+    vision_projector: Option<PathBuf>,
+    audio: Option<PathBuf>,
+    audio_projector: Option<PathBuf>,
+    d1: Option<PathBuf>,
+}
+
+impl InstalledWeights {
+    fn discover(root: Option<&Path>) -> Self {
+        let Some(root) = root else {
+            return Self::default();
+        };
+        Self {
+            text: setup::find_weight(root, "LFM3-1.7B"),
+            vision: setup::find_weight(root, "LFM3-VL-2B"),
+            vision_projector: setup::find_projector_for(root, "LFM3-VL-2B"),
+            audio: setup::find_weight(root, "LFM3-Audio-2B"),
+            audio_projector: setup::find_projector_for(root, "LFM3-Audio-2B"),
+            d1: setup::find_weight(root, "d1-2B"),
+        }
+    }
+
+    fn weight(&self, key: ModelKey) -> Option<&Path> {
+        match key {
+            ModelKey::Text => self.text.as_deref(),
+            ModelKey::Vision => self.vision.as_deref(),
+            ModelKey::Audio => self.audio.as_deref(),
+            ModelKey::D1 => self.d1.as_deref(),
+        }
+    }
+
+    fn projector(&self, key: ModelKey) -> Option<&Path> {
+        match key {
+            ModelKey::Vision => self.vision_projector.as_deref(),
+            ModelKey::Audio => self.audio_projector.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// True only when this role could actually start with the files present.
+    fn usable(&self, key: ModelKey) -> bool {
+        match key {
+            ModelKey::Text | ModelKey::D1 => self.weight(key).is_some(),
+            ModelKey::Vision | ModelKey::Audio => {
+                self.weight(key).is_some() && self.projector(key).is_some()
+            }
+        }
+    }
+}
+
 /// The single engine instance the desktop app embeds.
 pub struct Engine {
     config: Config,
     missions: BTreeMap<String, MissionManifest>,
-    workspace: PathBuf,
+    workspace: RwLock<PathBuf>,
     store: Store,
     coordinator: lfm3_harness::RunCoordinator,
-    models: Option<ModelManager>,
-    text_memory: u64,
+    models: RwLock<Option<ModelManager>>,
+    text_memory: RwLock<u64>,
     llama: LlamaRuntime,
-    setup: SetupSettings,
-    models_dir: Option<PathBuf>,
-    speech: SpeechConfig,
+    setup: RwLock<SetupSettings>,
+    models_dir: PathBuf,
+    weights: RwLock<InstalledWeights>,
+    speech: RwLock<SpeechConfig>,
+    downloads: DownloadManager,
+    /// A finished download whose files could not be swapped in because a turn
+    /// held the models. The next idle catalog/reload applies it.
+    pending_reload: AtomicBool,
     job: ApplicationJob,
     chat: ChatRuntime,
     jobs: JobRuntime,
@@ -115,6 +183,7 @@ impl Engine {
         let workspace = config
             .workspace
             .clone()
+            .or_else(|| settings.workspace.clone())
             .unwrap_or_else(|| config.data_dir.join("workspace"));
         fs::create_dir_all(&workspace).map_err(|error| {
             EngineError::Setup(format!("create workspace {}: {error}", workspace.display()))
@@ -136,54 +205,13 @@ impl Engine {
         job: ApplicationJob,
         setup: SetupSettings,
     ) -> Result<Self, EngineError> {
-        let models_dir = setup.models_dir.clone().or_else(setup::find_models_dir);
-        let weight = models_dir
-            .as_ref()
-            .and_then(|root| setup::find_weight(root, "LFM3-1.7B"));
-        let audio_weight = models_dir
-            .as_ref()
-            .and_then(|root| setup::find_weight(root, "LFM3-Audio-2B"));
-        let audio_projector = models_dir
-            .as_ref()
-            .and_then(|root| setup::find_projector_for(root, "LFM3-Audio-2B"));
-        let vision_weight = models_dir
-            .as_ref()
-            .and_then(|root| setup::find_weight(root, "LFM3-VL-2B"));
-        let vision_projector = models_dir
-            .as_ref()
-            .and_then(|root| setup::find_projector_for(root, "LFM3-VL-2B"));
-        let d1_weight = models_dir
-            .as_ref()
-            .and_then(|root| setup::find_weight(root, "d1-2B"));
+        let models_dir = effective_models_dir(&config, &setup);
+        let weights = InstalledWeights::discover(Some(&models_dir));
         let llama = probe_runtime(&config);
-        let models = build_model_manager(
-            &config,
-            &llama,
-            weight.as_deref(),
-            audio_weight.as_deref(),
-            audio_projector.as_deref(),
-            vision_weight.as_deref(),
-            vision_projector.as_deref(),
-            d1_weight.as_deref(),
-            &job,
-        );
-        let text_memory = weight
-            .as_ref()
-            .and_then(|path| fs::metadata(path).ok())
-            .map(|metadata| metadata.len().saturating_add(MODEL_MEMORY_HEADROOM))
-            .unwrap_or(0);
+        let models = build_model_manager(&config, &llama, &weights, &job);
+        let text_memory = text_memory_of(&weights);
         let coordinator = lfm3_harness::RunCoordinator::new(store.clone());
-        let speech = SpeechConfig {
-            executable: config
-                .llama
-                .tts
-                .clone()
-                .filter(|path| path.is_file())
-                .or_else(|| setup.llama_tts.clone().filter(|path| path.is_file()))
-                .or_else(setup::find_tts_executable),
-            weight: audio_weight.clone(),
-            projector: audio_projector.clone(),
-        };
+        let speech = build_speech(&config, &setup, &weights);
         let chat = ChatRuntime::open(
             &config.data_dir,
             workspace.clone(),
@@ -195,15 +223,18 @@ impl Engine {
         Ok(Self {
             config,
             missions,
-            workspace,
+            workspace: RwLock::new(workspace),
             store,
             coordinator,
-            models,
-            text_memory,
+            models: RwLock::new(models),
+            text_memory: RwLock::new(text_memory),
             llama,
-            setup,
+            setup: RwLock::new(setup),
             models_dir,
-            speech,
+            weights: RwLock::new(weights),
+            speech: RwLock::new(speech),
+            downloads: DownloadManager::default(),
+            pending_reload: AtomicBool::new(false),
             job,
             chat,
             jobs,
@@ -219,10 +250,28 @@ impl Engine {
     }
 
     /// The shared model manager, for benchmark probes that exercise the real
-    /// router without starting a chat turn.
+    /// router without starting a chat turn. The clone shares the same servers;
+    /// it is safe to hold for the duration of one probe.
     #[must_use]
-    pub fn model_manager(&self) -> Option<&ModelManager> {
-        self.models.as_ref()
+    pub fn model_manager(&self) -> Option<ModelManager> {
+        read(&self.models).clone()
+    }
+
+    /// The folder chat and jobs work in, copied so a rename mid-turn cannot
+    /// change what that turn acts on.
+    #[must_use]
+    pub fn workspace(&self) -> PathBuf {
+        read(&self.workspace).clone()
+    }
+
+    #[must_use]
+    pub fn models_dir(&self) -> &Path {
+        &self.models_dir
+    }
+
+    #[must_use]
+    pub fn setup_settings(&self) -> SetupSettings {
+        read(&self.setup).clone()
     }
 
     #[must_use]
@@ -242,12 +291,13 @@ impl Engine {
 
     #[must_use]
     pub fn health(&self) -> Value {
-        let speech_ready = self.speech.ready();
+        let speech_ready = read(&self.speech).ready();
         json!({
             "version": env!("CARGO_PKG_VERSION"),
             "local_only": true,
             "data_dir": self.config.data_dir.display().to_string(),
-            "models_dir": self.models_dir.as_ref().map(|path| path.display().to_string()),
+            "workspace": self.workspace().display().to_string(),
+            "models_dir": self.models_dir.display().to_string(),
             "llama": {
                 "executable": self.llama.executable.as_ref().map(|path| path.display().to_string()),
                 "build": self.llama.build,
@@ -255,7 +305,7 @@ impl Engine {
                 "pinned": self.llama.pinned,
                 "error": self.llama.error,
             },
-            "setup": serde_json::to_value(setup::inspect(&self.setup)).unwrap_or(Value::Null),
+            "setup": serde_json::to_value(setup::inspect(&self.setup_settings())).unwrap_or(Value::Null),
             "models": self.models(),
             "model_profile": LFM3_TEXT.report(),
             "model_profiles": ModelProfile::all_reports(),
@@ -289,11 +339,13 @@ impl Engine {
 
     #[must_use]
     pub fn models(&self) -> Vec<Value> {
-        let active: Vec<ModelKey> = self
-            .models
+        let manager = self.model_manager();
+        let active: Vec<ModelKey> = manager
             .as_ref()
-            .map(|manager| manager.active_models())
+            .map(ModelManager::active_models)
             .unwrap_or_default();
+        let weights = read(&self.weights).clone();
+        let text_memory = *read(&self.text_memory);
         let roles = [
             (
                 ModelKey::Text,
@@ -319,9 +371,10 @@ impl Engine {
         roles
             .into_iter()
             .map(|(key, url, model)| {
-                let ready = active.contains(&key);
-                let memory = if ready && key == ModelKey::Text {
-                    self.text_memory
+                let loaded = active.contains(&key);
+                let installed = weights.usable(key);
+                let memory = if loaded && key == ModelKey::Text {
+                    text_memory
                 } else {
                     0
                 };
@@ -329,12 +382,67 @@ impl Engine {
                     "key": key,
                     "model": model,
                     "url": url,
-                    "state": if ready { "ready" } else { "absent" },
+                    "state": if loaded {
+                        "ready"
+                    } else if installed {
+                        "installed"
+                    } else {
+                        "absent"
+                    },
+                    "installed": installed,
+                    "loaded": loaded,
+                    "path": weights.weight(key).map(|path| path.display().to_string()),
                     "memory_bytes": memory,
                     "error": Value::Null,
                 })
             })
             .collect()
+    }
+
+    /// What can be downloaded and what is already on disk. Read-only: this
+    /// never creates the models folder or contacts the network.
+    #[must_use]
+    pub fn model_catalog(&self) -> Value {
+        let manager = self.model_manager();
+        let loaded = manager
+            .as_ref()
+            .map(ModelManager::active_models)
+            .unwrap_or_default();
+        let weights = read(&self.weights).clone();
+        let entries: Vec<Value> = downloads::catalog()
+            .into_iter()
+            .map(|model| {
+                let on_disk = downloads::installed(&self.models_dir, &model);
+                let usable = weights.usable(model.key);
+                let is_loaded = loaded.contains(&model.key);
+                json!({
+                    "key": model.key,
+                    "title": model.title,
+                    "repo": model.repo,
+                    "source": model.source(),
+                    "license": downloads::LICENSE,
+                    "total_bytes": model.total_bytes(),
+                    "files": model.files,
+                    "installed": on_disk || usable,
+                    "loaded": is_loaded,
+                    "state": if is_loaded {
+                        "loaded"
+                    } else if on_disk || usable {
+                        "installed"
+                    } else {
+                        "absent"
+                    },
+                })
+            })
+            .collect();
+        json!({
+            "models_dir": self.models_dir.display().to_string(),
+            "download": self.downloads.active(),
+            "pending_reload": self.pending_reload.load(Ordering::SeqCst),
+            "runtime_ready": self.llama.pinned && self.llama.executable.is_some(),
+            "runtime_note": self.llama.error,
+            "models": entries,
+        })
     }
 
     pub async fn list_runs(&self, limit: u32) -> Result<Vec<RunRecord>, EngineError> {
@@ -403,12 +511,7 @@ impl Engine {
         let lease = self.acquire_text(&cancel).await?;
         let gateway: Arc<dyn ModelGateway> = Arc::new(LeaseGateway { lease });
         let planner = Planner::new(Arc::clone(&gateway)).with_max_tokens(1536);
-        let request = plan_request(
-            manifest.clone(),
-            goal.clone(),
-            details,
-            self.workspace.clone(),
-        );
+        let request = plan_request(manifest.clone(), goal.clone(), details, self.workspace());
         let plan = planner.draft(request, &cancel).await.map_err(|error| {
             EngineError::InvalidInput(format!(
                 "the planner could not produce a valid plan: {error}"
@@ -468,11 +571,12 @@ impl Engine {
         self.ensure_idle().await?;
         self.jobs.ensure_idle().await?;
 
-        let route = lfm3_harness::TaskRouter::route(&goal, &self.workspace);
+        let workspace = self.workspace();
+        let route = lfm3_harness::TaskRouter::route(&goal, &workspace);
         let cancel = CancellationContext::new(Duration::from_secs(u64::from(minutes) * 60));
         let lease = self.acquire_text(&cancel).await?;
         let gateway: Arc<dyn ModelGateway> = Arc::new(LeaseGateway { lease });
-        let mut registry = ToolRegistry::new(&self.workspace)?;
+        let mut registry = ToolRegistry::new(&workspace)?;
         // The deterministic route decides which optional observation tools the
         // job may use. Search and related-file lookup are always available;
         // `look` and `transcribe` appear only when the route selected their
@@ -483,8 +587,8 @@ impl Engine {
             })?;
             registry = registry.grant(tool);
         }
-        if let Some(manager) = &self.models {
-            registry = registry.with_models(manager.clone());
+        if let Some(manager) = self.model_manager() {
+            registry = registry.with_models(manager);
         }
         registry = registry.with_supervisor(self.job.supervisor());
         let record = self
@@ -571,15 +675,16 @@ impl Engine {
                 )
             }
         };
-        let mut registry = ToolRegistry::new(&self.workspace)?;
+        let workspace = self.workspace();
+        let mut registry = ToolRegistry::new(&workspace)?;
         for tool in &acceptance.spec().allowed_tools {
             let name = ToolName::parse(tool).ok_or_else(|| {
                 EngineError::Setup(format!("mission grants unimplemented tool {tool:?}"))
             })?;
             registry = registry.grant(name);
         }
-        if let Some(manager) = &self.models {
-            registry = registry.with_models(manager.clone());
+        if let Some(manager) = self.model_manager() {
+            registry = registry.with_models(manager);
         }
         registry = registry.with_supervisor(self.job.supervisor());
         let executor = Executor::new(
@@ -594,7 +699,7 @@ impl Engine {
         let mut runner = Runner::new(
             self.store.clone(),
             acceptance.clone(),
-            self.workspace.clone(),
+            workspace,
             Arc::new(executor),
             cancel,
         )?
@@ -754,10 +859,158 @@ impl Engine {
 
     pub async fn release_model(&self, key: ModelKey) -> Result<bool, EngineError> {
         let manager = self
-            .models
-            .as_ref()
+            .model_manager()
             .ok_or_else(|| EngineError::Setup("no local model runtime is configured".to_owned()))?;
         Ok(manager.evict(key)?)
+    }
+
+    /// Switches the folder chat and jobs act in. Refused while any turn, job,
+    /// or run is live so no operation can change its ground mid-flight.
+    pub async fn set_workspace(&self, path: PathBuf) -> Result<PathBuf, EngineError> {
+        let _guard = self.starting.lock().await;
+        self.ensure_switchable().await?;
+        if !path.is_absolute() {
+            return Err(EngineError::InvalidInput(
+                "choose an absolute folder path".to_owned(),
+            ));
+        }
+        if !path.is_dir() {
+            return Err(EngineError::InvalidInput(format!(
+                "{} is not a folder",
+                path.display()
+            )));
+        }
+        let path = path.canonicalize().unwrap_or(path);
+        let previous = self.workspace();
+        // Take the chat gate first: if a turn slipped in, nothing has changed
+        // yet and the person can simply try again.
+        self.chat.set_workspace(path.clone()).await.map_err(|_| {
+            EngineError::Conflict(
+                "a chat turn started while the folder was changing; try again".to_owned(),
+            )
+        })?;
+        let mut settings = self.setup_settings();
+        settings.workspace = Some(path.clone());
+        if let Err(error) = settings.save(&self.config.data_dir) {
+            let _ = self.chat.set_workspace(previous).await;
+            return Err(error.into());
+        }
+        *write(&self.workspace) = path.clone();
+        *write(&self.setup) = settings;
+        self.jobs.set_workspace(path.clone());
+        Ok(path)
+    }
+
+    /// Applies downloaded weights. Refused while a model is serving work; the
+    /// caller can retry once the turn ends.
+    pub async fn reload_models(&self) -> Result<Vec<Value>, EngineError> {
+        let _guard = self.starting.lock().await;
+        self.ensure_switchable().await?;
+        self.swap_installed_models().await?;
+        Ok(self.models())
+    }
+
+    /// Starts one explicit, user-initiated download. Only one may run; the
+    /// exact pinned files are verified before they are used.
+    pub fn start_download(
+        self: &Arc<Self>,
+        key: ModelKey,
+        emit: Arc<dyn Fn(DownloadEvent) + Send + Sync>,
+    ) -> Result<(), EngineError> {
+        let model = downloads::catalog_model(key)
+            .ok_or_else(|| EngineError::NotFound(format!("no catalog entry for {key}")))?;
+        fs::create_dir_all(&self.models_dir).map_err(|error| {
+            EngineError::Setup(format!(
+                "create models folder {}: {error}",
+                self.models_dir.display()
+            ))
+        })?;
+        let cancel = self.downloads.begin(key).map_err(EngineError::Conflict)?;
+        let engine = Arc::clone(self);
+        let root = self.models_dir.clone();
+        tokio::spawn(async move {
+            let on_event = |event: DownloadEvent| emit(event);
+            let outcome = downloads::download_model(&root, &model, &cancel, &on_event).await;
+            engine.downloads.finish(key);
+            match outcome {
+                Ok(_) => {
+                    *write(&engine.weights) = InstalledWeights::discover(Some(&root));
+                    emit(DownloadEvent::Done { key });
+                    if engine.reload_models().await.is_err() {
+                        engine.pending_reload.store(true, Ordering::SeqCst);
+                    } else {
+                        engine.pending_reload.store(false, Ordering::SeqCst);
+                    }
+                }
+                Err(error) if error.is_cancelled() => {
+                    emit(DownloadEvent::Cancelled { key });
+                }
+                Err(error) => {
+                    emit(DownloadEvent::Failed {
+                        key,
+                        message: error.to_string(),
+                    });
+                }
+            }
+        });
+        Ok(())
+    }
+
+    /// Stops the active download of this role, if any. Cancelling a finished
+    /// or already-cancelled download is a no-op so the button can race the
+    /// final event without showing a spurious error.
+    pub fn cancel_download(&self, key: ModelKey) -> Result<(), EngineError> {
+        self.downloads.cancel(key);
+        Ok(())
+    }
+
+    /// Retries a finished download that could not be swapped in while busy.
+    pub async fn apply_pending_reload(&self) {
+        if !self.pending_reload.load(Ordering::SeqCst) {
+            return;
+        }
+        if self.reload_models().await.is_ok() {
+            self.pending_reload.store(false, Ordering::SeqCst);
+        }
+    }
+
+    async fn ensure_switchable(&self) -> Result<(), EngineError> {
+        self.ensure_idle().await?;
+        self.jobs.ensure_idle().await?;
+        if self.chat.is_busy().await {
+            return Err(EngineError::Conflict(
+                "a chat turn is still answering; stop it or wait".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn swap_installed_models(&self) -> Result<(), EngineError> {
+        let weights = InstalledWeights::discover(Some(&self.models_dir));
+        let setup = self.setup_settings();
+        let new_models = build_model_manager(&self.config, &self.llama, &weights, &self.job);
+        let new_speech = build_speech(&self.config, &setup, &weights);
+        let new_memory = text_memory_of(&weights);
+        self.chat
+            .replace_runtime(new_models.clone(), new_speech.clone())
+            .await
+            .map_err(|_| {
+                EngineError::Conflict(
+                    "a chat turn started while the models were changing; try again".to_owned(),
+                )
+            })?;
+        let old = {
+            *write(&self.weights) = weights;
+            *write(&self.speech) = new_speech;
+            *write(&self.text_memory) = new_memory;
+            std::mem::replace(&mut *write(&self.models), new_models)
+        };
+        if let Some(old) = old {
+            if let Err(error) = old.shutdown() {
+                tracing::warn!(%error, "could not stop the replaced model servers");
+            }
+        }
+        Ok(())
     }
 
     /// Registers a pending tool approval. The future tool gate will wait on
@@ -890,7 +1143,7 @@ impl Engine {
     }
 
     async fn acquire_text(&self, cancel: &CancellationContext) -> Result<ModelLease, EngineError> {
-        let manager = self.models.as_ref().ok_or_else(|| {
+        let manager = self.model_manager().ok_or_else(|| {
             EngineError::Setup(
                 self.llama
                     .error
@@ -1025,23 +1278,64 @@ impl ModelGateway for LeaseGateway {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// The models folder the harness searches. An explicit setup path wins, then a
+/// discovered `models` folder, then trusted application data. The fallback is
+/// only created when a person actually downloads a model.
+fn effective_models_dir(config: &Config, setup: &SetupSettings) -> PathBuf {
+    setup
+        .models_dir
+        .clone()
+        .or_else(setup::find_models_dir)
+        .unwrap_or_else(|| config.data_dir.join("models"))
+}
+
+fn build_speech(
+    config: &Config,
+    setup: &SetupSettings,
+    weights: &InstalledWeights,
+) -> SpeechConfig {
+    SpeechConfig {
+        executable: config
+            .llama
+            .tts
+            .clone()
+            .filter(|path| path.is_file())
+            .or_else(|| setup.llama_tts.clone().filter(|path| path.is_file()))
+            .or_else(setup::find_tts_executable),
+        weight: weights.audio.clone(),
+        projector: weights.audio_projector.clone(),
+    }
+}
+
+fn text_memory_of(weights: &InstalledWeights) -> u64 {
+    weights
+        .text
+        .as_ref()
+        .and_then(|path| fs::metadata(path).ok())
+        .map(|metadata| metadata.len().saturating_add(MODEL_MEMORY_HEADROOM))
+        .unwrap_or(0)
+}
+
+fn read<T>(lock: &RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
+    lock.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn write<T>(lock: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
+    lock.write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn build_model_manager(
     config: &Config,
     runtime: &LlamaRuntime,
-    weight: Option<&Path>,
-    audio_weight: Option<&Path>,
-    audio_projector: Option<&Path>,
-    vision_weight: Option<&Path>,
-    vision_projector: Option<&Path>,
-    d1_weight: Option<&Path>,
+    weights: &InstalledWeights,
     job: &ApplicationJob,
 ) -> Option<ModelManager> {
     let executable = runtime.executable.clone()?;
     if !runtime.pinned {
         return None;
     }
-    let weight = weight?;
+    let weight = weights.text.as_deref()?;
     let file_bytes = fs::metadata(weight).ok()?.len();
     let text_memory = file_bytes.saturating_add(MODEL_MEMORY_HEADROOM);
     let mut specs = vec![ModelSpec::owned(
@@ -1056,7 +1350,9 @@ fn build_model_manager(
     // Voice input uses the local audio model through the same manager. It is
     // registered only when both the weight and its projector exist, so an
     // incomplete install never advertises a capability it cannot run.
-    if let (Some(audio), Some(projector)) = (audio_weight, audio_projector) {
+    if let (Some(audio), Some(projector)) =
+        (weights.audio.as_deref(), weights.audio_projector.as_deref())
+    {
         if let Ok(metadata) = fs::metadata(audio) {
             let audio_memory = metadata.len().saturating_add(MODEL_MEMORY_HEADROOM);
             specs.push(ModelSpec::owned(
@@ -1075,7 +1371,10 @@ fn build_model_manager(
 
     // Visual observation is registered only with both its weight and its
     // projector, so `look` never advertises a capability it cannot run.
-    if let (Some(vision), Some(projector)) = (vision_weight, vision_projector) {
+    if let (Some(vision), Some(projector)) = (
+        weights.vision.as_deref(),
+        weights.vision_projector.as_deref(),
+    ) {
         if let Ok(metadata) = fs::metadata(vision) {
             let vision_memory = metadata.len().saturating_add(MODEL_MEMORY_HEADROOM);
             specs.push(ModelSpec::owned(
@@ -1098,7 +1397,7 @@ fn build_model_manager(
     }
 
     // The calibrated classifier serves routing judgements and grounded checks.
-    if let Some(d1) = d1_weight {
+    if let Some(d1) = weights.d1.as_deref() {
         if let Ok(metadata) = fs::metadata(d1) {
             let d1_memory = metadata.len().saturating_add(MODEL_MEMORY_HEADROOM);
             specs.push(ModelSpec::owned(
@@ -1283,14 +1582,15 @@ mod tests {
         )
         .expect("chat runtime");
         let jobs = JobRuntime::open(directory.path(), workspace.clone()).expect("job runtime");
+        let models_dir = directory.path().join("models");
         let engine = Engine {
             config,
             missions: BTreeMap::new(),
-            workspace,
+            workspace: RwLock::new(workspace),
             store,
             coordinator,
-            models: None,
-            text_memory: 0,
+            models: RwLock::new(None),
+            text_memory: RwLock::new(0),
             llama: LlamaRuntime {
                 executable: None,
                 build: 0,
@@ -1298,9 +1598,12 @@ mod tests {
                 pinned: false,
                 error: None,
             },
-            setup: SetupSettings::default(),
-            models_dir: None,
-            speech: SpeechConfig::default(),
+            setup: RwLock::new(SetupSettings::default()),
+            models_dir,
+            weights: RwLock::new(InstalledWeights::default()),
+            speech: RwLock::new(SpeechConfig::default()),
+            downloads: DownloadManager::default(),
+            pending_reload: AtomicBool::new(false),
             job,
             chat,
             jobs,
@@ -1536,7 +1839,7 @@ mod tests {
 
     #[tokio::test]
     async fn leased_models_cannot_be_released() {
-        let mut fixture = fixture().await;
+        let fixture = fixture().await;
         let endpoint = stub_server("stub-text");
         let manager = ModelManager::new(
             ModelManagerConfig {
@@ -1560,7 +1863,7 @@ mod tests {
             )
             .await
             .expect("acquire stub model");
-        fixture.engine.models = Some(manager);
+        *write(&fixture.engine.models) = Some(manager);
 
         let error = fixture
             .engine
@@ -1648,5 +1951,89 @@ mod tests {
             .expect("replayed journal");
         assert!(rest.iter().all(|event| event.seq > cursor));
         assert_eq!(rest.len(), all.len() - 1);
+    }
+
+    #[tokio::test]
+    async fn catalog_lists_every_pinned_role_without_touching_the_models_folder() {
+        let fixture = fixture().await;
+        let catalog = fixture.engine.model_catalog();
+
+        assert_eq!(catalog["download"], Value::Null);
+        assert_eq!(catalog["pending_reload"], json!(false));
+        assert_eq!(
+            catalog["models_dir"],
+            json!(fixture.engine.models_dir().display().to_string())
+        );
+
+        let models = catalog["models"].as_array().expect("catalog models");
+        assert_eq!(models.len(), 4);
+        let keys: BTreeSet<&str> = models
+            .iter()
+            .map(|model| model["key"].as_str().expect("model key"))
+            .collect();
+        let mut expected = BTreeSet::new();
+        expected.extend(["audio", "d1", "text", "vision"]);
+        assert_eq!(keys, expected);
+
+        for model in models {
+            assert_eq!(model["state"], json!("absent"));
+            assert_eq!(model["installed"], json!(false));
+            assert_eq!(model["loaded"], json!(false));
+            let repo = model["repo"].as_str().expect("repo");
+            assert_eq!(model["source"], json!(format!("LiquidAI/{repo}")));
+            assert!(model["files"]
+                .as_array()
+                .is_some_and(|files| !files.is_empty()));
+            assert!(model["total_bytes"].as_u64().is_some_and(|bytes| bytes > 0));
+        }
+
+        assert!(
+            !fixture.engine.models_dir().exists(),
+            "reading the catalog must not create the models folder"
+        );
+    }
+
+    #[tokio::test]
+    async fn switching_workspace_moves_chat_and_jobs_and_persists_the_choice() {
+        let fixture = fixture().await;
+        let folder = fixture._directory.path().join("second workspace");
+        fs::create_dir_all(&folder).expect("second workspace");
+
+        let chosen = fixture
+            .engine
+            .set_workspace(folder.clone())
+            .await
+            .expect("switch workspace");
+        assert_eq!(chosen, folder.canonicalize().expect("canonical"));
+        assert_eq!(fixture.engine.workspace(), chosen);
+        assert_eq!(fixture.engine.chat.workspace(), chosen);
+        assert_eq!(fixture.engine.jobs.workspace(), chosen);
+
+        let saved = SetupSettings::load(fixture._directory.path()).expect("saved settings");
+        assert_eq!(saved.workspace.as_deref(), Some(chosen.as_path()));
+    }
+
+    #[tokio::test]
+    async fn workspace_switch_rejects_non_folders_without_changing_anything() {
+        let fixture = fixture().await;
+        let before = fixture.engine.workspace();
+        let file = fixture._directory.path().join("not-a-folder.txt");
+        fs::write(&file, b"x").expect("regular file");
+
+        assert!(fixture.engine.set_workspace(file).await.is_err());
+        assert!(fixture
+            .engine
+            .set_workspace(PathBuf::from("relative"))
+            .await
+            .is_err());
+
+        assert_eq!(fixture.engine.workspace(), before);
+        assert_eq!(fixture.engine.chat.workspace(), before);
+        assert_eq!(fixture.engine.jobs.workspace(), before);
+        let saved = SetupSettings::load(fixture._directory.path()).expect("saved settings");
+        assert!(
+            saved.workspace.is_none(),
+            "a refused switch persists nothing"
+        );
     }
 }

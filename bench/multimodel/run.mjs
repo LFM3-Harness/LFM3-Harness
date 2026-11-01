@@ -434,6 +434,13 @@ function gradeChat(raw) {
       roles: record.route?.roles ?? [],
       tools,
       actions: actions.length,
+      gates: (record.decisions ?? []).map((decision) => ({
+        point: decision?.point ?? null,
+        outcome: decision?.outcome ?? null,
+        label: decision?.label ?? null,
+        confidence_bps: decision?.confidence_bps ?? null,
+        target: decision?.target ?? null,
+      })),
       approve: record.approve ?? null,
       milliseconds: record.milliseconds,
       deltas: record.deltas,
@@ -454,6 +461,20 @@ function modelDelivery(chat, router) {
     audio: { cases: voice.length, pass: voice.filter((record) => record.pass).length },
     d1_decisions: router.summary.decision_used,
     d1_consulted: router.summary.decision_consulted,
+    gates: gateSummary(chat),
+  };
+}
+
+/** Counts the typed gate decisions the probe recorded inside chat turns. */
+function gateSummary(chat) {
+  const gates = chat.flatMap((record) => record.gates ?? []);
+  const at = (point) => gates.filter((gate) => gate.point === point).length;
+  return {
+    write: at("write_gate"),
+    holds: gates.filter((gate) => gate.point === "write_gate" && gate.outcome === "hold").length,
+    evidence: at("evidence_gate"),
+    advisories: gates.filter((gate) => gate.outcome === "advise").length,
+    inconclusive: gates.filter((gate) => gate.outcome === "inconclusive").length,
   };
 }
 
@@ -508,6 +529,9 @@ or replayed.
 | Audio role | ${delivery.audio.pass}/${delivery.audio.cases} passed through the chat tool |
 | Audio synthesis + ASR | ${audioPass}/${audio.length} passed |
 | Text conversation | ${delivery.text.pass}/${delivery.text.cases} graded turns passed |
+| Write gates consulted / held | ${delivery.gates.write} / ${delivery.gates.holds} |
+| Evidence gates consulted / advised | ${delivery.gates.evidence} / ${delivery.gates.advisories} |
+| Gate answers rejected as inconclusive | ${delivery.gates.inconclusive} |
 
 ## Decision-model routing
 
@@ -529,6 +553,15 @@ ${routerRows}
 - Blind spots are cases where no keyword group fires, so d1 is the only signal
   that can recover the route. They are counted as final failures when the
   keyword guess is wrong and d1 does not correct it.
+
+## Decision gates inside chat turns
+
+The probe records every typed gate answer. A write gate runs before a
+\`write_file\` or \`edit_file\` creates an approval card; a confident
+\`contradicts\` label holds the change and no card appears, so a mismatch is
+visible as a hold rather than as a rejected approval. The evidence gate runs
+once per turn after the first read-only batch and can only add a note. Neither
+gate can approve or execute work, and an inconclusive answer changes nothing.
 
 ## Chat turns, tools, and approvals
 

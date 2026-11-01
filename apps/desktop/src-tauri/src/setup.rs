@@ -25,6 +25,9 @@ pub struct SetupSettings {
     pub llama_tts: Option<PathBuf>,
     pub models_dir: Option<PathBuf>,
     pub projector: Option<PathBuf>,
+    /// The folder chat and jobs work in. Chosen in the app and persisted here;
+    /// `LFM3_WORKSPACE` still wins when it is set.
+    pub workspace: Option<PathBuf>,
 }
 
 impl SetupSettings {
@@ -92,6 +95,20 @@ impl SetupSettings {
             if !path.is_dir() {
                 return Err(HarnessError::InvalidConfiguration(format!(
                     "models_dir is not a directory: {}",
+                    path.display()
+                )));
+            }
+        }
+        if let Some(path) = &self.workspace {
+            if !path.is_absolute() {
+                return Err(HarnessError::InvalidConfiguration(format!(
+                    "workspace must be absolute: {}",
+                    path.display()
+                )));
+            }
+            if !path.is_dir() {
+                return Err(HarnessError::InvalidConfiguration(format!(
+                    "workspace is not a directory: {}",
                     path.display()
                 )));
             }

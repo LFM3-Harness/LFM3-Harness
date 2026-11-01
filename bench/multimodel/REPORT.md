@@ -21,6 +21,9 @@ or replayed.
 | Audio role | 1/1 passed through the chat tool |
 | Audio synthesis + ASR | 2/2 passed |
 | Text conversation | 12/12 graded turns passed |
+| Write gates consulted / held | 2 / 0 |
+| Evidence gates consulted / advised | 8 / 2 |
+| Gate answers rejected as inconclusive | 2 |
 
 ## Decision-model routing
 
@@ -57,28 +60,37 @@ decision override is the expected outcome.
 | r20-gist-vendor | summarize | general | summarize (decision) | 9460 | pass |
 | r21-transcribe-recording | voice | voice | voice (decision) | 8643 | pass |
 
-- Median route latency: 118 ms, prompt to final route.
+- Median route latency: 122 ms, prompt to final route.
 - d1 was consulted for 21 of 21 messages; its choice replaced the keyword route in 20 and agreed with it in 1. Every router prompt here is at least 24 characters, so none was skipped.
 - Blind spots are cases where no keyword group fires, so d1 is the only signal
   that can recover the route. They are counted as final failures when the
   keyword guess is wrong and d1 does not correct it.
+
+## Decision gates inside chat turns
+
+The probe records every typed gate answer. A write gate runs before a
+`write_file` or `edit_file` creates an approval card; a confident
+`contradicts` label holds the change and no card appears, so a mismatch is
+visible as a hold rather than as a rejected approval. The evidence gate runs
+once per turn after the first read-only batch and can only add a note. Neither
+gate can approve or execute work, and an inconclusive answer changes nothing.
 
 ## Chat turns, tools, and approvals
 
 | Case | Route (source) | Tools | Approvals | Time | Result |
 | --- | --- | --- | --- | --- | --- |
 | c01-hello | general (heuristic) | - | 0 | 3.2s | pass |
-| c02-list-notes | explore (decision) | list_files | 0 | 5.6s | pass |
-| c03-greenhouse | summarize (decision) | read_file | 0 | 2.9s | pass |
-| c04-related | related (decision) | related_files | 0 | 9.3s | pass |
-| c05-report-allowed | report (decision) | search_files, read_file, write_file | 2 | 8.4s | pass |
-| c06-write-denied | general (heuristic) | write_file | 2 | 3.5s | pass |
-| c07-vision-number | vision (decision) | look | 0 | 5.8s | pass |
-| c08-vision-shapes | vision (decision) | look | 0 | 4.5s | pass |
-| c09-voice | voice (decision) | transcribe | 0 | 3.9s | pass |
-| c10-memory-set | general (heuristic) | - | 0 | 1.9s | pass |
+| c02-list-notes | explore (decision) | list_files | 0 | 5.2s | pass |
+| c03-greenhouse | summarize (decision) | read_file | 0 | 3.1s | pass |
+| c04-related | related (decision) | related_files | 0 | 5.6s | pass |
+| c05-report-allowed | report (decision) | search_files, read_file, write_file | 2 | 7.5s | pass |
+| c06-write-denied | general (heuristic) | write_file | 2 | 3.9s | pass |
+| c07-vision-number | vision (decision) | look | 0 | 7.3s | pass |
+| c08-vision-shapes | vision (decision) | look, list_files, list_files, list_files, search_files, search_files, list_files, read_file, look | 0 | 15.7s | pass |
+| c09-voice | voice (decision) | transcribe | 0 | 4.0s | pass |
+| c10-memory-set | general (heuristic) | - | 0 | 2.0s | pass |
 | c10-memory-recall | general (heuristic) | - | 0 | 1.4s | pass |
-| c11-missing-file | summarize (decision) | search_files, search_files, list_files | 0 | 7.1s | pass |
+| c11-missing-file | summarize (decision) | search_files, list_files | 0 | 5.6s | pass |
 
 Failures:
 

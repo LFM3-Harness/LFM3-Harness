@@ -15,11 +15,14 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 base64.workspace = true
+futures-util.workspace = true
 lfm3-harness = { path = "../../../crates/lfm3-harness" }
 open = "5"
+reqwest.workspace = true
 rfd = "0.15"
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tauri = { version = "2", features = [] }
 thiserror.workspace = true
 tokio.workspace = true

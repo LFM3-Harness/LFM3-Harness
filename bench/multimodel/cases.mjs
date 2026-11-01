@@ -262,7 +262,7 @@ export const chat = [
     prompt: "Read notes/does-not-exist.md and summarise it.",
     expect: {
       contains: [
-        /no file|not exist|does(?:n't| not) exist|not found|could not find|couldn't find|no such|unable|missing/i,
+        /no file|there(?:'s| is) no\b|not exist|does(?:n't| not) exist|not (?:found|present)|could not find|couldn't find|no such|unable|missing/i,
       ],
       absent: [/water filter|tomatoes|vendor/i],
     },

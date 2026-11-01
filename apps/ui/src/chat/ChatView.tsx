@@ -34,6 +34,14 @@ const SUGGESTIONS = [
   'Look at an image in this folder and describe what it shows.',
 ];
 
+/** Short labels for the two-column mobile starter cards. */
+const PHONE_SUGGESTIONS = [
+  { label: 'Summarise the project', prompt: SUGGESTIONS[0] },
+  { label: 'Explain a file', prompt: SUGGESTIONS[1] },
+  { label: 'Draft a report', prompt: SUGGESTIONS[2] },
+  { label: 'Describe an image', prompt: SUGGESTIONS[3] },
+];
+
 export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
   const [bridge, setBridge] = useState<EngineBridge | null>(null);
   const [health, setHealth] = useState<HealthReport | null>(null);
@@ -59,7 +67,6 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
   );
   const [phoneScale, setPhoneScale] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [clock, setClock] = useState(() => formatClock(new Date()));
   const activeRef = useRef<string | null>(null);
   const loadToken = useRef(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -220,10 +227,14 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
     if (!phoneView) {
       return;
     }
-    const tick = () => setClock(formatClock(new Date()));
-    tick();
-    const timer = window.setInterval(tick, 30_000);
-    return () => window.clearInterval(timer);
+    const fit = () => {
+      const width = (window.innerWidth - 48) / PHONE_WIDTH;
+      const height = (window.innerHeight - 48) / PHONE_HEIGHT;
+      setPhoneScale(Math.max(0.5, Math.min(1, width, height)));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
   }, [phoneView]);
 
   useEffect(() => {
@@ -822,14 +833,6 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
         <header className="chat-header">
           {phoneView ? (
             <div className="phone-header">
-              <div className="phone-statusbar" aria-hidden="true">
-                <span className="phone-clock">{clock}</span>
-                <span className="phone-status-icons">
-                  <SignalIcon />
-                  <WifiIcon />
-                  <BatteryIcon />
-                </span>
-              </div>
               <div className="phone-appbar">
                 <button
                   type="button"
@@ -850,19 +853,8 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
                     setDrawerOpen(false);
                   }}
                 >
-                  ＋
+                  <ComposeIcon />
                 </button>
-              </div>
-              <div className="phone-tools">
-                {modelPicker}
-                <WorkspaceSwitcher
-                  label={switchingFolder ? 'Choosing…' : workspaceLabel}
-                  title={workspaceTitle}
-                  disabled={!bridge || switchingFolder || running}
-                  busy={switchingFolder}
-                  compact
-                  onChange={() => void pickWorkspace()}
-                />
               </div>
             </div>
           ) : (
@@ -937,34 +929,57 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
 
         {!hasTextModel ? (
           <p className="chat-warning" role="status">
-            The writing model isn’t set up yet. Open <strong>Models</strong> in this header to
-            download it, or add a model file to the models folder and reload.
+            The writing model isn’t set up yet. Open the <strong>model menu</strong> to download it,
+            or add a model file to the models folder and reload.
           </p>
         ) : null}
 
         <div className="chat-scroll" ref={scrollRef}>
           {showEmpty ? (
-            <div className="chat-empty">
-              <p className="eyebrow">Your local assistant</p>
+            <div className={`chat-empty ${phoneView ? 'phone-empty' : ''}`}>
+              {phoneView ? (
+                <span className="phone-empty-brand">LFM3</span>
+              ) : (
+                <p className="eyebrow">Your local assistant</p>
+              )}
               <h2>What can I help you with?</h2>
               <p className="muted">
-                Ask a question or describe something you’d like done. I can read and search the
-                folder you chose, summarise files, look at images, and draft reports. I’ll show you
-                any change before it happens, and nothing leaves this computer.
+                {phoneView
+                  ? 'Ask a question, or describe a job. I can read this folder and show you every change before it happens.'
+                  : 'Ask a question or describe something you’d like done. I can read and search the folder you chose, summarise files, look at images, and draft reports. I’ll show you any change before it happens, and nothing leaves this computer.'}
               </p>
-              <div className="suggestions">
-                {SUGGESTIONS.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    className="suggestion"
-                    disabled={!bridge || sending}
-                    onClick={() => void send(suggestion)}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
+              {phoneView ? (
+                <div className="phone-suggestions">
+                  {PHONE_SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion.label}
+                      type="button"
+                      className="phone-suggestion"
+                      disabled={!bridge || sending}
+                      onClick={() => void send(suggestion.prompt)}
+                    >
+                      <span>{suggestion.label}</span>
+                      <span className="phone-suggestion-arrow" aria-hidden="true">
+                        ↗
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="suggestions">
+                  {SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      className="suggestion"
+                      disabled={!bridge || sending}
+                      onClick={() => void send(suggestion)}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ) : null}
 
@@ -1032,20 +1047,43 @@ export function ChatView({ onOpenTasks }: { onOpenTasks: () => void }) {
           ) : null}
         </div>
 
-        <Composer
-          disabled={!bridge || sending || loadingView || elsewhere}
-          running={running}
-          onSend={(text) => void send(text)}
-          onStop={() => void stop()}
-          onTranscribe={async (base64, format) => {
-            if (!bridge) {
-              throw new Error('The local engine is not connected.');
-            }
-            return bridge.transcribeVoice(base64, format);
-          }}
-          onAttachImage={attachImage}
-          onError={setError}
-        />
+        <div className="composer-dock">
+          {phoneView ? (
+            <div className="phone-composer-toolbar">
+              {modelPicker}
+              <WorkspaceSwitcher
+                label={
+                  switchingFolder
+                    ? 'Choosing…'
+                    : health?.workspace
+                      ? workspaceLabel
+                      : 'Choose folder'
+                }
+                title={workspaceTitle}
+                disabled={!bridge || switchingFolder || running}
+                busy={switchingFolder}
+                compact
+                onChange={() => void pickWorkspace()}
+              />
+            </div>
+          ) : null}
+          <Composer
+            disabled={!bridge || sending || loadingView || elsewhere}
+            running={running}
+            rows={phoneView ? 1 : 3}
+            placeholder={phoneView ? 'Ask anything…' : undefined}
+            onSend={(text) => void send(text)}
+            onStop={() => void stop()}
+            onTranscribe={async (base64, format) => {
+              if (!bridge) {
+                throw new Error('The local engine is not connected.');
+              }
+              return bridge.transcribeVoice(base64, format);
+            }}
+            onAttachImage={attachImage}
+            onError={setError}
+          />
+        </div>
       </main>
     </div>
   );
@@ -1114,60 +1152,6 @@ function folderName(path: string): string {
   return parts.at(-1) || path;
 }
 
-function formatClock(date: Date): string {
-  return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date);
-}
-
-function SignalIcon() {
-  return (
-    <svg viewBox="0 0 18 12" width="17" height="11" aria-hidden="true">
-      <rect x="0" y="7" width="3" height="5" rx="1" fill="currentColor" />
-      <rect x="5" y="4.5" width="3" height="7.5" rx="1" fill="currentColor" />
-      <rect x="10" y="2" width="3" height="10" rx="1" fill="currentColor" />
-      <rect x="15" y="0" width="3" height="12" rx="1" fill="currentColor" />
-    </svg>
-  );
-}
-
-function WifiIcon() {
-  return (
-    <svg viewBox="0 0 16 12" width="16" height="12" fill="none" aria-hidden="true">
-      <path
-        d="M1.2 4.1a9.7 9.7 0 0 1 13.6 0M3.8 6.6a6.1 6.1 0 0 1 8.4 0M6.3 9a2.6 2.6 0 0 1 3.4 0"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-      <circle cx="8" cy="11.1" r="0.8" fill="currentColor" />
-    </svg>
-  );
-}
-
-function BatteryIcon() {
-  return (
-    <svg viewBox="0 0 24 12" width="24" height="12" fill="none" aria-hidden="true">
-      <rect
-        x="0.7"
-        y="0.7"
-        width="20.2"
-        height="10.6"
-        rx="3"
-        stroke="currentColor"
-        strokeOpacity="0.45"
-        strokeWidth="1.3"
-      />
-      <rect x="2.4" y="2.4" width="14" height="7.2" rx="1.6" fill="currentColor" />
-      <path
-        d="M22.3 4.2v3.6"
-        stroke="currentColor"
-        strokeOpacity="0.45"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function MenuIcon() {
   return (
     <svg viewBox="0 0 18 18" width="18" height="18" fill="none" aria-hidden="true">
@@ -1176,6 +1160,25 @@ function MenuIcon() {
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ComposeIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="19" height="19" fill="none" aria-hidden="true">
+      <path
+        d="M11.2 3.6H5a2 2 0 0 0-2 2v9.4a2 2 0 0 0 2 2h9.4a2 2 0 0 0 2-2V8.7"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="m14.1 2.6 3.3 3.3-7.7 7.7-4 .8.8-4 7.6-7.8Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
       />
     </svg>
   );

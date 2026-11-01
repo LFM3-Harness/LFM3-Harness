@@ -1,6 +1,11 @@
 //! Loopback-only client for the pinned llama.cpp server.
 
-use std::{collections::BTreeMap, future::Future, pin::Pin, time::Duration};
+use std::{
+    collections::BTreeMap,
+    future::Future,
+    pin::Pin,
+    time::{Duration, Instant},
+};
 
 use futures_util::StreamExt;
 
@@ -12,7 +17,7 @@ use super::types::{
     AssistantMessage, ChatChoice, ChatRequest, ChatResponse, Decision, DecisionRequest,
     FunctionCall, ModelsResponse, ToolCall, TranscribeRequest, Transcript,
 };
-use crate::{is_loopback, CancelReason, CancellationChild};
+use crate::{is_loopback, observability, CancelReason, CancellationChild};
 
 /// Failure of a model call, a lease, or server startup.
 #[derive(Debug, thiserror::Error)]
@@ -164,12 +169,42 @@ impl LlamaClient {
         request: ChatRequest,
         cancel: &CancellationChild,
     ) -> Result<ChatResponse, ModelError> {
-        let url = self.endpoint_for("v1/chat/completions");
-        let wire = self.wire(&request, false);
-        let (status, body) = self.send(cancel, self.http.post(url).json(&wire)).await?;
-        self.ensure_success(status, &body)?;
-        serde_json::from_str(&body)
-            .map_err(|error| ModelError::Protocol(format!("chat response: {error}")))
+        let started = Instant::now();
+        let outcome = async {
+            let url = self.endpoint_for("v1/chat/completions");
+            let wire = self.wire(&request, false);
+            let (status, body) = self.send(cancel, self.http.post(url).json(&wire)).await?;
+            self.ensure_success(status, &body)?;
+            serde_json::from_str(&body)
+                .map_err(|error| ModelError::Protocol(format!("chat response: {error}")))
+        }
+        .await;
+        self.trace("chat", &request, &outcome, started, None, false);
+        outcome
+    }
+
+    /// Reports one completed call to PostHog when tracing is configured. A
+    /// trace never touches the result of the call it describes.
+    fn trace(
+        &self,
+        span_name: &str,
+        request: &ChatRequest,
+        outcome: &Result<ChatResponse, ModelError>,
+        started: Instant,
+        time_to_first_token: Option<Duration>,
+        stream: bool,
+    ) {
+        observability::record_generation(observability::Generation {
+            span_name,
+            model: &self.model,
+            base_url: self.base.as_str(),
+            latency: started.elapsed(),
+            time_to_first_token,
+            stream,
+            request,
+            response: outcome.as_ref().ok(),
+            error: outcome.as_ref().err(),
+        });
     }
 
     /// Streams one completion over SSE, forwarding text deltas as they arrive.
@@ -186,130 +221,151 @@ impl LlamaClient {
     where
         F: FnMut(&str) + Send + ?Sized,
     {
-        let url = self.endpoint_for("v1/chat/completions");
-        let wire = self.wire(&request, true);
-        let response = cancel
-            .run(self.http.post(url).json(&wire).send())
-            .await
-            .map_err(|cancelled| ModelError::Cancelled(cancelled.reason))?
-            .map_err(|error| ModelError::Transport(error.to_string()))?;
-        let status = response.status();
-        if !status.is_success() {
-            let body = cancel
-                .run(response.text())
+        let started = Instant::now();
+        let mut first_token: Option<Duration> = None;
+        let outcome: Result<ChatResponse, ModelError> = async {
+            let url = self.endpoint_for("v1/chat/completions");
+            let wire = self.wire(&request, true);
+            let response = cancel
+                .run(self.http.post(url).json(&wire).send())
                 .await
                 .map_err(|cancelled| ModelError::Cancelled(cancelled.reason))?
                 .map_err(|error| ModelError::Transport(error.to_string()))?;
-            return Err(ModelError::Http {
-                status: status.as_u16(),
-                body: body.chars().take(2048).collect(),
-            });
-        }
+            let status = response.status();
+            if !status.is_success() {
+                let body = cancel
+                    .run(response.text())
+                    .await
+                    .map_err(|cancelled| ModelError::Cancelled(cancelled.reason))?
+                    .map_err(|error| ModelError::Transport(error.to_string()))?;
+                return Err(ModelError::Http {
+                    status: status.as_u16(),
+                    body: body.chars().take(2048).collect(),
+                });
+            }
 
-        let mut stream = response.bytes_stream();
-        let mut buffer: Vec<u8> = Vec::new();
-        let mut content = String::new();
-        let mut model = String::new();
-        let mut calls: BTreeMap<usize, StreamAccum> = BTreeMap::new();
-        'stream: loop {
-            let next = cancel
-                .run(stream.next())
-                .await
-                .map_err(|cancelled| ModelError::Cancelled(cancelled.reason))?;
-            let Some(chunk) = next else {
-                break;
-            };
-            let chunk = chunk.map_err(|error| ModelError::Transport(error.to_string()))?;
-            buffer.extend_from_slice(&chunk);
-            while let Some(position) = buffer.iter().position(|byte| *byte == b'\n') {
-                let line = buffer.drain(..=position).collect::<Vec<u8>>();
-                let line = String::from_utf8_lossy(&line);
-                let line = line.trim();
-                if line.is_empty() {
-                    continue;
-                }
-                let Some(data) = line.strip_prefix("data:") else {
-                    continue;
+            let mut stream = response.bytes_stream();
+            let mut buffer: Vec<u8> = Vec::new();
+            let mut content = String::new();
+            let mut model = String::new();
+            let mut calls: BTreeMap<usize, StreamAccum> = BTreeMap::new();
+            'stream: loop {
+                let next = cancel
+                    .run(stream.next())
+                    .await
+                    .map_err(|cancelled| ModelError::Cancelled(cancelled.reason))?;
+                let Some(chunk) = next else {
+                    break;
                 };
-                let data = data.trim();
-                if data == "[DONE]" {
-                    break 'stream;
-                }
-                let parsed: StreamChunk = match serde_json::from_str(data) {
-                    Ok(parsed) => parsed,
-                    Err(_) => continue,
-                };
-                if !parsed.model.is_empty() {
-                    model = parsed.model;
-                }
-                for choice in parsed.choices {
-                    if let Some(text) = choice.delta.content {
-                        if !text.is_empty() {
-                            content.push_str(&text);
-                            on_delta(&text);
-                        }
+                let chunk = chunk.map_err(|error| ModelError::Transport(error.to_string()))?;
+                buffer.extend_from_slice(&chunk);
+                while let Some(position) = buffer.iter().position(|byte| *byte == b'\n') {
+                    let line = buffer.drain(..=position).collect::<Vec<u8>>();
+                    let line = String::from_utf8_lossy(&line);
+                    let line = line.trim();
+                    if line.is_empty() {
+                        continue;
                     }
-                    for fragment in choice.delta.tool_calls {
-                        let entry = calls.entry(fragment.index).or_default();
-                        if let Some(id) = fragment.id.filter(|value| !value.is_empty()) {
-                            entry.id = Some(id);
+                    let Some(data) = line.strip_prefix("data:") else {
+                        continue;
+                    };
+                    let data = data.trim();
+                    if data == "[DONE]" {
+                        break 'stream;
+                    }
+                    let parsed: StreamChunk = match serde_json::from_str(data) {
+                        Ok(parsed) => parsed,
+                        Err(_) => continue,
+                    };
+                    if !parsed.model.is_empty() {
+                        model = parsed.model;
+                    }
+                    for choice in parsed.choices {
+                        if let Some(text) = choice.delta.content {
+                            if !text.is_empty() {
+                                content.push_str(&text);
+                                if first_token.is_none() {
+                                    first_token = Some(started.elapsed());
+                                }
+                                on_delta(&text);
+                            }
                         }
-                        if let Some(name) = fragment.function.name.filter(|value| !value.is_empty())
-                        {
-                            entry.name = name;
-                        }
-                        if let Some(arguments) = fragment.function.arguments {
-                            entry.arguments.push_str(&arguments);
+                        for fragment in choice.delta.tool_calls {
+                            let entry = calls.entry(fragment.index).or_default();
+                            if let Some(id) = fragment.id.filter(|value| !value.is_empty()) {
+                                entry.id = Some(id);
+                            }
+                            if let Some(name) =
+                                fragment.function.name.filter(|value| !value.is_empty())
+                            {
+                                entry.name = name;
+                            }
+                            if let Some(arguments) = fragment.function.arguments {
+                                entry.arguments.push_str(&arguments);
+                            }
                         }
                     }
                 }
             }
-        }
-        // Some servers flush the final line without a trailing newline.
-        let tail = String::from_utf8_lossy(&buffer);
-        if let Some(data) = tail.trim().strip_prefix("data:") {
-            if let Ok(parsed) = serde_json::from_str::<StreamChunk>(data.trim()) {
-                for choice in parsed.choices {
-                    if let Some(text) = choice.delta.content {
-                        if !text.is_empty() {
-                            content.push_str(&text);
-                            on_delta(&text);
+            // Some servers flush the final line without a trailing newline.
+            let tail = String::from_utf8_lossy(&buffer);
+            if let Some(data) = tail.trim().strip_prefix("data:") {
+                if let Ok(parsed) = serde_json::from_str::<StreamChunk>(data.trim()) {
+                    for choice in parsed.choices {
+                        if let Some(text) = choice.delta.content {
+                            if !text.is_empty() {
+                                content.push_str(&text);
+                                if first_token.is_none() {
+                                    first_token = Some(started.elapsed());
+                                }
+                                on_delta(&text);
+                            }
                         }
                     }
                 }
             }
-        }
 
-        let tool_calls = calls
-            .into_values()
-            .filter(|call| !call.name.is_empty())
-            .map(|call| ToolCall {
-                id: call
-                    .id
-                    .unwrap_or_else(|| format!("call-{}", uuid::Uuid::new_v4().simple())),
-                kind: "function".to_owned(),
-                function: FunctionCall {
-                    name: call.name,
-                    arguments: call.arguments,
-                },
+            let tool_calls = calls
+                .into_values()
+                .filter(|call| !call.name.is_empty())
+                .map(|call| ToolCall {
+                    id: call
+                        .id
+                        .unwrap_or_else(|| format!("call-{}", uuid::Uuid::new_v4().simple())),
+                    kind: "function".to_owned(),
+                    function: FunctionCall {
+                        name: call.name,
+                        arguments: call.arguments,
+                    },
+                })
+                .collect::<Vec<_>>();
+
+            Ok(ChatResponse {
+                id: String::new(),
+                model,
+                choices: vec![ChatChoice {
+                    index: 0,
+                    message: AssistantMessage {
+                        role: "assistant".to_owned(),
+                        content: (!content.is_empty()).then_some(content),
+                        reasoning_content: None,
+                        tool_calls,
+                    },
+                    finish_reason: None,
+                }],
+                usage: None,
             })
-            .collect::<Vec<_>>();
-
-        Ok(ChatResponse {
-            id: String::new(),
-            model,
-            choices: vec![ChatChoice {
-                index: 0,
-                message: AssistantMessage {
-                    role: "assistant".to_owned(),
-                    content: (!content.is_empty()).then_some(content),
-                    reasoning_content: None,
-                    tool_calls,
-                },
-                finish_reason: None,
-            }],
-            usage: None,
-        })
+        }
+        .await;
+        self.trace(
+            "chat_stream",
+            &request,
+            &outcome,
+            started,
+            first_token,
+            true,
+        );
+        outcome
     }
 
     fn wire<'a>(&'a self, request: &'a ChatRequest, stream: bool) -> WireChatRequest<'a> {

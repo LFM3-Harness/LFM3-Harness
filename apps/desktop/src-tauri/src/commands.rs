@@ -7,9 +7,12 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use lfm3_harness::{ModelKey, RunId};
 use serde_json::Value;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
-use crate::engine::{Engine, EngineError};
+use crate::{
+    downloads::{DownloadEvent, DOWNLOAD_EVENT_CHANNEL},
+    engine::{Engine, EngineError},
+};
 
 pub struct AppState {
     pub engine: Arc<Engine>,
@@ -187,6 +190,67 @@ pub async fn release_model(state: State<'_, AppState>, model_key: String) -> Res
     let key = parse_model(&model_key)?;
     state.engine.release_model(key).await.map_err(to_message)?;
     Ok(())
+}
+
+// ------------------------------------------------------------------ setup
+
+/// Opens the folder picker and switches chat and jobs to the chosen folder.
+/// Returns `null` when the person cancels; nothing changes in that case.
+#[tauri::command]
+pub async fn choose_workspace(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let Some(folder) = rfd::AsyncFileDialog::new()
+        .set_title("Choose the folder chat and jobs work in")
+        .pick_folder()
+        .await
+    else {
+        return Ok(None);
+    };
+    let path = state
+        .engine
+        .set_workspace(folder.path().to_path_buf())
+        .await
+        .map_err(to_message)?;
+    Ok(Some(path.display().to_string()))
+}
+
+/// What can be downloaded, where it lands, and what is installed already.
+#[tauri::command]
+pub async fn model_catalog(state: State<'_, AppState>) -> Result<Value, String> {
+    state.engine.apply_pending_reload().await;
+    Ok(state.engine.model_catalog())
+}
+
+/// Starts one explicit download. Progress arrives on the download channel;
+/// nothing is fetched unless this command is invoked by a person.
+#[tauri::command]
+pub async fn download_model(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    model_key: String,
+) -> Result<(), String> {
+    let key = parse_model(&model_key)?;
+    let emitter = Arc::new(move |event: DownloadEvent| {
+        if let Err(error) = app.emit(DOWNLOAD_EVENT_CHANNEL, &event) {
+            tracing::warn!(%error, "could not deliver download event");
+        }
+    });
+    state
+        .engine
+        .start_download(key, emitter)
+        .map_err(to_message)
+}
+
+#[tauri::command]
+pub async fn cancel_download(state: State<'_, AppState>, model_key: String) -> Result<(), String> {
+    let key = parse_model(&model_key)?;
+    state.engine.cancel_download(key).map_err(to_message)
+}
+
+/// Swaps downloaded weights into the running engine after a turn ends.
+#[tauri::command]
+pub async fn reload_models(state: State<'_, AppState>) -> Result<Value, String> {
+    let models = state.engine.reload_models().await.map_err(to_message)?;
+    Ok(Value::Array(models))
 }
 
 #[tauri::command]

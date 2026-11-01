@@ -8,15 +8,16 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     process::Stdio,
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::Duration,
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use lfm3_harness::{
     chat::{
-        fallback_tool_call, route_request, system_message_with_route, to_model_messages,
-        tool_definitions, ChatCapabilities, ChatRoute,
+        check_evidence, check_write_gate, fallback_tool_call, route_request,
+        system_message_with_route, to_model_messages, tool_definitions, ChatCapabilities,
+        ChatRoute, HarnessDecision,
     },
     model::{
         ChatMessage, ChatRequest, ContentPart, InputAudio, ModelError, ModelKey, ModelManager,
@@ -103,6 +104,10 @@ pub enum ChatEvent {
     Route {
         route: ChatRoute,
     },
+    /// One typed answer from the decision model inside this turn.
+    Decision {
+        decision: HarnessDecision,
+    },
     ActionRequested {
         action: ChatActionRecord,
     },
@@ -124,10 +129,13 @@ pub enum ChatEvent {
 
 struct Inner {
     store: ChatStore,
-    workspace: PathBuf,
-    models: Option<ModelManager>,
+    workspace: RwLock<PathBuf>,
+    models: RwLock<Option<ModelManager>>,
     supervisor: ProcessSupervisor,
-    speech: SpeechConfig,
+    speech: RwLock<SpeechConfig>,
+    /// Serializes a whole turn against a runtime swap, so a download can never
+    /// stop a server that is still answering.
+    runtime_gate: Mutex<()>,
     speech_gate: Mutex<()>,
     active: Mutex<Option<ActiveTurn>>,
     approvals: Mutex<HashMap<String, oneshot::Sender<bool>>>,
@@ -163,10 +171,11 @@ impl ChatRuntime {
         Ok(Self {
             inner: Arc::new(Inner {
                 store,
-                workspace,
-                models,
+                workspace: RwLock::new(workspace),
+                models: RwLock::new(models),
                 supervisor,
-                speech,
+                speech: RwLock::new(speech),
+                runtime_gate: Mutex::new(()),
                 speech_gate: Mutex::new(()),
                 active: Mutex::new(None),
                 approvals: Mutex::new(HashMap::new()),
@@ -187,8 +196,53 @@ impl ChatRuntime {
     }
 
     #[must_use]
-    pub fn workspace(&self) -> &Path {
-        &self.inner.workspace
+    pub fn workspace(&self) -> PathBuf {
+        read(&self.inner.workspace).clone()
+    }
+
+    /// The currently installed manager. A turn copies this once at its start so
+    /// a later reload cannot change the servers underneath it.
+    #[must_use]
+    pub fn models(&self) -> Option<ModelManager> {
+        read(&self.inner.models).clone()
+    }
+
+    fn speech_config(&self) -> SpeechConfig {
+        read(&self.inner.speech).clone()
+    }
+
+    #[must_use]
+    pub async fn is_busy(&self) -> bool {
+        self.inner.active.lock().await.is_some()
+    }
+
+    /// Points the next turn at a different folder. Refused while a turn is
+    /// live; the running turn keeps the folder it started with.
+    pub async fn set_workspace(&self, path: PathBuf) -> Result<(), EngineError> {
+        let _gate = self
+            .inner
+            .runtime_gate
+            .try_lock()
+            .map_err(|_| EngineError::Conflict("a chat turn is still answering".to_owned()))?;
+        *write(&self.inner.workspace) = path;
+        Ok(())
+    }
+
+    /// Replaces the managers a new turn will use. The gate makes this wait-free
+    /// when a turn is live: the caller retries once the turn finishes.
+    pub async fn replace_runtime(
+        &self,
+        models: Option<ModelManager>,
+        speech: SpeechConfig,
+    ) -> Result<(), EngineError> {
+        let _gate = self
+            .inner
+            .runtime_gate
+            .try_lock()
+            .map_err(|_| EngineError::Conflict("a chat turn is still answering".to_owned()))?;
+        *write(&self.inner.models) = models;
+        *write(&self.inner.speech) = speech;
+        Ok(())
     }
 
     pub fn list_sessions(&self, limit: u32) -> Result<Vec<ChatSession>, EngineError> {
@@ -346,7 +400,7 @@ impl ChatRuntime {
                 "the voice clip is empty".to_owned(),
             ));
         }
-        let models = self.inner.models.as_ref().ok_or_else(|| {
+        let models = self.models().ok_or_else(|| {
             EngineError::Setup(
                 "the local audio model is not available; check the model folder".to_owned(),
             )
@@ -432,7 +486,7 @@ impl ChatRuntime {
             stem,
             extension
         );
-        let path = self.inner.workspace.join(&relative);
+        let path = self.workspace().join(&relative);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|error| {
                 EngineError::Setup(format!("could not create the attachment folder: {error}"))
@@ -463,7 +517,7 @@ impl ChatRuntime {
                 "spoken replies are limited to {MAX_SPEECH_CHARS} characters"
             )));
         }
-        let speech = self.inner.speech.clone();
+        let speech = self.speech_config();
         if speech.ready() {
             // One short-lived llama-tts process at a time; it loads its own
             // copy of the audio weight and exits after writing the WAV.
@@ -511,18 +565,15 @@ impl ChatRuntime {
         }
     }
 
-    fn capabilities(&self) -> ChatCapabilities {
-        self.inner
-            .models
-            .as_ref()
-            .map_or(ChatCapabilities::default(), |models| ChatCapabilities {
-                vision: models.has_model(ModelKey::Vision),
-                audio: models.has_model(ModelKey::Audio),
-            })
+    fn capabilities(models: Option<&ModelManager>) -> ChatCapabilities {
+        models.map_or(ChatCapabilities::default(), |models| ChatCapabilities {
+            vision: models.has_model(ModelKey::Vision),
+            audio: models.has_model(ModelKey::Audio),
+        })
     }
 
-    fn extra_tool_hint(&self) -> String {
-        let capabilities = self.capabilities();
+    fn extra_tool_hint(&self, models: Option<&ModelManager>) -> String {
+        let capabilities = Self::capabilities(models);
         let mut hints = Vec::new();
         if capabilities.vision {
             hints.push("look");
@@ -538,6 +589,9 @@ impl ChatRuntime {
     }
 
     async fn drive_turn(&self, session_id: &str, cancel: CancellationContext) {
+        // Hold the swap gate for the whole turn so downloaded weights can only
+        // replace servers between turns, never underneath one.
+        let _gate = self.inner.runtime_gate.lock().await;
         let outcome = self.run_loop(session_id, &cancel).await;
         if let Err(error) = outcome {
             let message = error.to_string();
@@ -552,12 +606,13 @@ impl ChatRuntime {
         session_id: &str,
         cancel: &CancellationContext,
     ) -> Result<(), EngineError> {
-        let models = self.inner.models.as_ref().ok_or_else(|| {
-            EngineError::Setup(
+        let Some(models) = self.models() else {
+            return Err(EngineError::Setup(
                 "the local text model is not available; check the model folder and llama.cpp"
                     .to_owned(),
-            )
-        })?;
+            ));
+        };
+        let workspace = self.workspace();
         self.emit(
             session_id,
             ChatEvent::Status {
@@ -573,7 +628,7 @@ impl ChatRuntime {
             .find(|record| record.role == ChatRole::User)
             .map(|record| record.content.as_str())
             .unwrap_or_default();
-        let capabilities = self.capabilities();
+        let capabilities = Self::capabilities(Some(&models));
         let route = if models.has_model(ModelKey::D1) {
             self.emit(
                 session_id,
@@ -582,7 +637,7 @@ impl ChatRuntime {
                     detail: Some("Decision model is choosing the task route and tools".to_owned()),
                 },
             );
-            route_request(models, last_user, &cancel.child()).await
+            route_request(&models, last_user, &cancel.child()).await
         } else {
             ChatRoute::heuristic(last_user)
         };
@@ -602,10 +657,15 @@ impl ChatRuntime {
             route.reason.chars().take(400).collect::<String>()
         );
         let mut messages = vec![system_message_with_route(
-            &self.inner.workspace.display().to_string(),
+            &workspace.display().to_string(),
             &route_note,
         )];
         messages.extend(to_model_messages(&records, HISTORY_CHARS));
+
+        // The evidence gate runs at most once per turn, after the first batch
+        // of read-only observations. It never blocks the turn; it only adds a
+        // note the acting model can use.
+        let mut evidence_checked = false;
 
         for round in 0..MAX_ROUNDS {
             if cancel.is_cancelled() {
@@ -726,9 +786,19 @@ impl ChatRuntime {
                 tool_calls: tool_calls.clone(),
             });
 
+            let mut observations = Vec::new();
             for call in tool_calls {
+                let read_only = !matches!(call.function.name.as_str(), "write_file" | "edit_file");
                 let result = match self
-                    .execute_tool_call(session_id, &assistant.id, &call, cancel)
+                    .execute_tool_call(
+                        session_id,
+                        &assistant.id,
+                        &call,
+                        &workspace,
+                        &models,
+                        last_user,
+                        cancel,
+                    )
                     .await
                 {
                     Ok(result) => result,
@@ -746,7 +816,41 @@ impl ChatRuntime {
                     }),
                 )?;
                 self.emit(session_id, ChatEvent::ToolResult { message: record });
+                if read_only {
+                    observations.push((call.function.name.clone(), result.clone()));
+                }
                 messages.push(ChatMessage::tool(call.id.clone(), result));
+            }
+
+            if !evidence_checked && !observations.is_empty() && models.has_model(ModelKey::D1) {
+                evidence_checked = true;
+                self.emit(
+                    session_id,
+                    ChatEvent::Status {
+                        state: "checking_evidence".to_owned(),
+                        detail: Some(
+                            "Decision model is checking whether the observations answer the request"
+                                .to_owned(),
+                        ),
+                    },
+                );
+                match check_evidence(&models, last_user, &observations, &cancel.child()).await {
+                    Ok(Some(decision)) => {
+                        self.emit(
+                            session_id,
+                            ChatEvent::Decision {
+                                decision: decision.clone(),
+                            },
+                        );
+                        if let Some(note) = decision.evidence_note() {
+                            messages.push(ChatMessage::system(note));
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::debug!(error = %error, "evidence gate skipped");
+                    }
+                }
             }
 
             if round + 1 == MAX_ROUNDS {
@@ -767,11 +871,15 @@ impl ChatRuntime {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn execute_tool_call(
         &self,
         session_id: &str,
         assistant_message_id: &str,
         call: &lfm3_harness::ToolCall,
+        workspace: &Path,
+        models: &ModelManager,
+        user_request: &str,
         cancel: &CancellationContext,
     ) -> Result<String, EngineError> {
         let Some(tool) = ToolName::parse(&call.function.name) else {
@@ -779,10 +887,10 @@ impl ChatRuntime {
                 "Tool error: {:?} is not a chat tool. Available tools: list_files, read_file, \
                  search_files, related_files, write_file, edit_file{}.",
                 call.function.name,
-                self.extra_tool_hint()
+                self.extra_tool_hint(Some(models))
             ));
         };
-        let capabilities = self.capabilities();
+        let capabilities = Self::capabilities(Some(models));
         let allowed = matches!(
             tool,
             ToolName::ListFiles
@@ -819,11 +927,9 @@ impl ChatRuntime {
             return Ok("Tool error: arguments must be a JSON object.".to_owned());
         }
 
-        let mut registry = ToolRegistry::new(&self.inner.workspace)?
-            .with_supervisor(self.inner.supervisor.clone());
-        if let Some(models) = self.inner.models.as_ref() {
-            registry = registry.with_models(models.clone());
-        }
+        let mut registry = ToolRegistry::new(workspace)?
+            .with_supervisor(self.inner.supervisor.clone())
+            .with_models(models.clone());
         for granted in [
             ToolName::ListFiles,
             ToolName::ReadFile,
@@ -842,6 +948,41 @@ impl ChatRuntime {
         }
 
         if matches!(tool, ToolName::WriteFile | ToolName::EditFile) {
+            // The decision model checks whether the proposed change matches the
+            // person's request *before* an approval card is created. A hold
+            // never overrides consent: it only keeps a mismatched change away
+            // from the user in the first place.
+            if models.has_model(ModelKey::D1) {
+                self.emit(
+                    session_id,
+                    ChatEvent::Status {
+                        state: "preflight".to_owned(),
+                        detail: Some(
+                            "Decision model is checking the proposed change against your request"
+                                .to_owned(),
+                        ),
+                    },
+                );
+                match check_write_gate(models, user_request, tool, &arguments, &cancel.child())
+                    .await
+                {
+                    Ok(Some(decision)) => {
+                        self.emit(
+                            session_id,
+                            ChatEvent::Decision {
+                                decision: decision.clone(),
+                            },
+                        );
+                        if let Some(hold) = decision.hold_message() {
+                            return Ok(hold);
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::debug!(error = %error, "write gate skipped");
+                    }
+                }
+            }
             let summary = summarize(tool, &arguments);
             let action = self.inner.store.create_action(
                 session_id,
@@ -979,6 +1120,15 @@ impl ChatRuntime {
             event,
         });
     }
+}
+
+fn read<T>(lock: &RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
+    lock.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn write<T>(lock: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
+    lock.write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn summarize(tool: ToolName, arguments: &Value) -> String {
