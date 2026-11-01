@@ -233,14 +233,28 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Flatten downloaded artifacts
+        run: |
+          set -euo pipefail
+          # Bundles are uploaded under deb/ and appimage/; the release wants one
+          # flat directory so the checksum table and upload glob see them.
+          find dist -mindepth 2 -type f -print0 \
+            | while IFS= read -r -d '' file; do mv -f "$file" dist/; done
+          find dist -mindepth 1 -type d -empty -delete
+          find dist -mindepth 1 -type d -exec rm -rf {} +
+          ls -l dist
+
       - name: Verify every expected asset is present
         run: |
           set -euo pipefail
-          ls -l dist
           test -n "$(find dist -maxdepth 1 -name '*setup.exe')"
           test -n "$(find dist -maxdepth 1 -name '*.deb')"
           test -n "$(find dist -maxdepth 1 -name '*.AppImage')"
           test -n "$(find dist -maxdepth 1 -name '*_cli.tar.gz')"
+          for expected in '.exe' '.deb' '.AppImage' '.tar.gz'; do
+            count=$(find dist -maxdepth 1 -name "*$expected" | wc -l)
+            echo "$expected -> $count"
+          done
 
       - name: Write the release body with generated checksums
         run: |
